@@ -285,6 +285,7 @@ class STTNAutoInpaint:
             total_frames = frame_info.get('actual_len', frame_info['len'])
             start_frame = frame_info.get('start_frame', 0)
             end_frame = frame_info.get('end_frame', frame_info['len'])
+            actual_frame_count = frame_info.get('actual_len', frame_info['len'])  # 获取实际帧数
             
             # 计算需要迭代修复视频的次数
             # 确保rec_time计算正确
