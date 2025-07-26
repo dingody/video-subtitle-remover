@@ -215,6 +215,7 @@ class STTNAutoInpaint:
         frame_info['end_frame'] = end_frame
         
         print(f"Frame info: {frame_info}")
+        print(f"Calculated frames: start={start_frame}, end={end_frame}, count={actual_frame_count}")
         # 验证尺寸
         print(f"Verified frame dimensions - Width: {frame_info['W_ori']}, Height: {frame_info['H_ori']}")
         
@@ -286,8 +287,12 @@ class STTNAutoInpaint:
             end_frame = frame_info.get('end_frame', frame_info['len'])
             
             # 计算需要迭代修复视频的次数
-            rec_time = total_frames // self.clip_gap if total_frames % self.clip_gap == 0 else total_frames // self.clip_gap + 1
-            print(f"Total frames: {total_frames}, Clip gap: {self.clip_gap}, Rec time: {rec_time}")
+            # 确保rec_time计算正确
+            rec_time = actual_frame_count // self.clip_gap
+            if actual_frame_count % self.clip_gap != 0:
+                rec_time += 1
+            print(f"Total frames: {actual_frame_count}, Clip gap: {self.clip_gap}, Rec time: {rec_time}")
+            
             # 计算分割高度，用于确定修复区域的大小
             split_h = int(frame_info['W_ori'] * 3 / 16)
             
@@ -316,8 +321,8 @@ class STTNAutoInpaint:
             # 遍历每一次的迭代次数
             for i in range(rec_time):
                 start_f = i * self.clip_gap  # 起始帧位置
-                end_f = min((i + 1) * self.clip_gap, total_frames)  # 结束帧位置
-                print(f'Processing segment: {start_f + 1} - {end_f} / {total_frames}')
+                end_f = min((i + 1) * self.clip_gap, actual_frame_count)  # 结束帧位置
+                print(f'Processing segment: {start_f + 1} - {end_f} / {actual_frame_count}')
                 
                 frames_hr = []  # 高分辨率帧列表
                 frames = {}  # 帧字典，用于存储裁剪后的图像
@@ -338,19 +343,30 @@ class STTNAutoInpaint:
                         print(f"Failed to read frame {j}.")
                         break
                     
-                    # 确保image是numpy数组，并且尺寸正确
+                    # 确保image是numpy数组
                     if not isinstance(image, np.ndarray):
                         image = np.array(image)
                     
-                    # 确保图像尺寸与视频尺寸一致
-                    if image.shape[0] != frame_info['H_ori'] or image.shape[1] != frame_info['W_ori']:
-                        print(f"Frame {j + start_frame} dimension mismatch. Resizing from {image.shape} to ({frame_info['H_ori']}, {frame_info['W_ori']}, 3)")
-                        image = cv2.resize(image, (frame_info['W_ori'], frame_info['H_ori']))
-                    
                     # 检测帧中是否包含文字，如果包含则跳过该帧（仅在启用配置时）
-                    # 临时禁用OCR检测功能进行测试
                     contains_text = False
-                    print(f"Skipping OCR detection for frame {j + start_frame} (disabled for testing)")
+                    if (config.skipFramesWithTextInSttnAuto.value and 
+                        self.subtitle_detector is not None and 
+                        is_frame_number_in_ab_sections(j + start_frame, ab_sections)):
+                        print(f"Detecting text in frame {j + start_frame}")
+                        detected_text = self.subtitle_detector.detect_subtitle(image)
+                        contains_text = len(detected_text) > 0
+                        if contains_text:
+                            skipped_frames_count += 1
+                            print(f"Frame {j + start_frame} contains text, skipping...")
+                        else:
+                            processed_frames_count += 1
+                            print(f"Frame {j + start_frame} is clean, will be processed")
+                    elif is_frame_number_in_ab_sections(j + start_frame, ab_sections):
+                        # 即使不检测文字也记录处理的帧
+                        processed_frames_count += 1
+                        print(f"Frame {j + start_frame} will be processed (text detection disabled or skipped)")
+                    else:
+                        print(f"Frame {j + start_frame} is outside processing area, skipping...")
                     
                     frames_hr.append(image)
                     valid_frames_count += 1
@@ -360,7 +376,7 @@ class STTNAutoInpaint:
                         for k in range(len(inpaint_area)):
                             # 裁剪、缩放并添加到帧字典
                             # 注意：inpaint_area的格式是(ymin, ymax, xmin, xmax)
-                            image_crop = image[inpaint_area[k][0]:inpaint_area[k][1], inpaint_area[k][2]:inpaint_area[k][3], :]  # 正确使用y和x坐标
+                            image_crop = image[inpaint_area[k][0]:inpaint_area[k][1], :, :]  # 正确使用y坐标
                             print(f"Frame {j + start_frame}: Cropped region shape: {image_crop.shape}")
                             image_resize = cv2.resize(image_crop, (self.sttn_inpaint.model_input_width, self.sttn_inpaint.model_input_height))
                             frames[k].append(image_resize)
@@ -373,10 +389,9 @@ class STTNAutoInpaint:
                     continue
                     
                 # 对每个修复区域运行修复
-                print(f"Running inpaint for {len(inpaint_area)} areas with {valid_frames_count} frames")
                 for k in range(len(inpaint_area)):
                     if len(frames[k]) > 0:  # 确保有帧可以处理
-                        print(f"Processing area {k} with {len(frames[k])} frames")
+                        print(f"Running inpaint for area {k} with {len(frames[k])} frames")
                         comps[k] = self.sttn_inpaint.inpaint(frames[k])
                         print(f"Completed processing area {k}")
                     else:
