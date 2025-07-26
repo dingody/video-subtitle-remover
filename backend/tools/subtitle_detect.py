@@ -42,6 +42,9 @@ class SubtitleDetect:
         return TextDetector(args)
 
     def detect_subtitle(self, img):
+        # 确保img是numpy数组
+        if not isinstance(img, np.ndarray):
+            img = np.array(img)
         temp_list = []
         dt_boxes, elapse = self.text_detector(img)
         coordinate_list = get_coordinates(dt_boxes.tolist())

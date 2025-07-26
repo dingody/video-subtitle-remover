@@ -122,6 +122,11 @@ class STTNInpaint:
         """
         使用STTN完成空洞填充（空洞即被遮罩的区域）
         """
+        # 确保所有帧都是numpy数组
+        for i in range(len(frames)):
+            if not isinstance(frames[i], np.ndarray):
+                frames[i] = np.array(frames[i])
+                
         frame_length = len(frames)
         # 对帧进行预处理转换为张量，并进行归一化
         feats = _to_tensors(frames).unsqueeze(0) * 2 - 1
@@ -281,6 +286,10 @@ class STTNAutoInpaint:
                     if not success:
                         print(f"Failed to read frame {j}.")
                         break
+                    
+                    # 确保image是numpy数组
+                    if not isinstance(image, np.ndarray):
+                        image = np.array(image)
                     
                     # 检测帧中是否包含文字，如果包含则跳过该帧（仅在启用配置时）
                     contains_text = False

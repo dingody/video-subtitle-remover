@@ -69,10 +69,16 @@ class Stack(object):
 
     def __call__(self, img_group):
         for i in range(len(img_group)):
-            if img_group[i].ndim==3:
-                img_group[i] = Image.fromarray(cv2.cvtColor(img_group[i], cv2.COLOR_BGR2RGB))
-            elif img_group[i].ndim==2:
-                img_group[i] = Image.fromarray(img_group[i])
+            # 检查是否为numpy数组，如果不是则转换
+            if hasattr(img_group[i], 'ndim'):
+                # 已经是numpy数组
+                if img_group[i].ndim==3:
+                    img_group[i] = Image.fromarray(cv2.cvtColor(img_group[i], cv2.COLOR_BGR2RGB))
+                elif img_group[i].ndim==2:
+                    img_group[i] = Image.fromarray(img_group[i])
+            else:
+                # 可能是PIL图像，直接使用
+                pass
 
         mode = img_group[0].mode
         if mode == '1':
