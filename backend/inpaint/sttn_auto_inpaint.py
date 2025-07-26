@@ -255,6 +255,7 @@ class STTNAutoInpaint:
             
             # 计算需要迭代修复视频的次数
             rec_time = total_frames // self.clip_gap if total_frames % self.clip_gap == 0 else total_frames // self.clip_gap + 1
+            print(f"Total frames: {total_frames}, Clip gap: {self.clip_gap}, Rec time: {rec_time}")
             # 计算分割高度，用于确定修复区域的大小
             split_h = int(frame_info['W_ori'] * 3 / 16)
             
@@ -329,18 +330,14 @@ class STTNAutoInpaint:
                     continue
                     
                 # 对每个修复区域运行修复
+                print(f"Running inpaint for {len(inpaint_area)} areas with {valid_frames_count} frames")
                 for k in range(len(inpaint_area)):
                     if len(frames[k]) > 0:  # 确保有帧可以处理
+                        print(f"Processing area {k} with {len(frames[k])} frames")
                         comps[k] = self.sttn_inpaint.inpaint(frames[k])
                     else:
                         comps[k] = []
-                    
-                # 对每个修复区域运行修复
-                for k in range(len(inpaint_area)):
-                    if len(frames[k]) > 0:  # 确保有帧可以处理
-                        comps[k] = self.sttn_inpaint.inpaint(frames[k])
-                    else:
-                        comps[k] = []
+                        print(f"Skipping area {k} - no frames to process")
                 
                 # 如果有要修复的区域
                 if inpaint_area and valid_frames_count > 0:
@@ -364,6 +361,7 @@ class STTNAutoInpaint:
                                 processed_idx += 1
                     
                     # 应用修复结果
+                    print(f"Applying results to {valid_frames_count} frames")
                     for j in range(valid_frames_count):
                         absolute_frame_number = j + start_f + start_frame  # 计算绝对帧号
                         if input_sub_remover is not None and input_sub_remover.gui_mode:
@@ -399,14 +397,14 @@ class STTNAutoInpaint:
                         print(f"Applied inpainting to frame {absolute_frame_number} - No visible change")
                 else:
                     print(f"Skipped frame {absolute_frame_number}")
-                    
-                    writer.write(frame)
-                    
-                    if input_sub_remover is not None:
-                            if tbar is not None:
-                                input_sub_remover.update_progress(tbar, increment=1)
-                            if original_frame is not None and input_sub_remover.gui_mode:
-                                input_sub_remover.update_preview_with_comp(original_frame, frame)
+                
+                writer.write(frame)
+                
+                if input_sub_remover is not None:
+                    if tbar is not None:
+                        input_sub_remover.update_progress(tbar, increment=1)
+                    if original_frame is not None and input_sub_remover.gui_mode:
+                        input_sub_remover.update_preview_with_comp(original_frame, frame)
         except Exception as e:
             import traceback
             print(f"Error during video processing: {str(e)}")
@@ -415,6 +413,8 @@ class STTNAutoInpaint:
         finally:
             if writer:
                 writer.release()
+            if reader:
+                reader.release()
 
 
 if __name__ == '__main__':
