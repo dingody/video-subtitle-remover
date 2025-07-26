@@ -43,14 +43,34 @@ class SubtitleDetect:
         return TextDetector(args)
 
     def detect_subtitle(self, img):
+        # 添加性能监控
+        import time
+        start_time = time.time()
+        try:
+            import psutil
+            import os
+            process = psutil.Process(os.getpid())
+        except ImportError:
+            psutil = None
+            
+        def log_performance(label=""):
+            if psutil:
+                cpu_percent = process.cpu_percent()
+                memory_info = process.memory_info()
+                print(f"[OCR] {label} - Elapsed: {time.time() - start_time:.2f}s, "
+                             f"CPU: {cpu_percent}%, Memory: {memory_info.rss / 1024 / 1024:.2f} MB")
+            else:
+                print(f"[OCR] {label} - Elapsed: {time.time() - start_time:.2f}s")
+        
         # 确保img是numpy数组
         if not isinstance(img, np.ndarray):
             img = np.array(img)
-        print(f"Detecting subtitles in frame with shape {img.shape}")
         
         # 确保图像在正确的设备上并具有正确的格式
         if img.dtype != np.uint8:
             img = img.astype(np.uint8)
+            
+        log_performance("Image preprocessing")
         
         # 添加超时机制，防止OCR检测卡住
         import signal
@@ -72,8 +92,8 @@ class SubtitleDetect:
         thread.daemon = True
         thread.start()
         
-        # 等待最多5秒
-        thread.join(timeout=5.0)
+        # 等待最多3秒（减少超时时间）
+        thread.join(timeout=3.0)
         
         if thread.is_alive():
             print("OCR detection timed out")
@@ -84,7 +104,7 @@ class SubtitleDetect:
             return []
             
         dt_boxes, elapse = result[0]
-        print(f"OCR detection completed in {elapse} seconds")
+        log_performance("OCR detection completed")
         coordinate_list = get_coordinates(dt_boxes.tolist())
         temp_list = []
         if coordinate_list:
@@ -99,7 +119,7 @@ class SubtitleDetect:
                             temp_list.append((xmin, xmax, ymin, ymax))
                 else:
                     temp_list.append((xmin, xmax, ymin, ymax))
-        print(f"Found {len(temp_list)} text regions")
+        log_performance("Coordinate processing completed")
         return temp_list
 
     def find_subtitle_frame_no(self, sub_remover=None):

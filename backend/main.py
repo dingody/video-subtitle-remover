@@ -580,6 +580,34 @@ if __name__ == '__main__':
     # 将stdout重定向到日志
     sys.stdout = LogWriter()
     
+    # 添加性能监控
+    import time
+    try:
+        import psutil
+        import os
+        
+        def log_system_resources(label=""):
+            # 获取当前进程
+            process = psutil.Process(os.getpid())
+            
+            # CPU和内存使用情况
+            cpu_percent = process.cpu_percent()
+            memory_info = process.memory_info()
+            memory_percent = process.memory_percent()
+            
+            # 系统级别的CPU和内存使用情况
+            system_cpu_percent = psutil.cpu_percent()
+            virtual_memory = psutil.virtual_memory()
+            
+            logging.info(f"{label} - System Resources - Process CPU: {cpu_percent}%, "
+                         f"Process Memory: {memory_info.rss / 1024 / 1024:.2f} MB ({memory_percent:.2f}%), "
+                         f"System CPU: {system_cpu_percent}%, "
+                         f"System Memory: {virtual_memory.percent}%")
+    except ImportError:
+        def log_system_resources(label=""):
+            logging.info(f"{label} - psutil not available for system resource monitoring")
+        sys.stdout = LogWriter()
+    
     # 添加超时机制
     import signal
     

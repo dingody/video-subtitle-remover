@@ -262,11 +262,34 @@ class STTNAutoInpaint:
 
     def __call__(self, input_mask=None, input_sub_remover=None, tbar=None):
         print(f"STTNAutoInpaint: {self.start_time}s to {self.end_time}s")  # 简化日志
+        # 添加性能监控
+        import time
+        start_time = time.time()
+        try:
+            import psutil
+            import os
+            process = psutil.Process(os.getpid())
+        except ImportError:
+            psutil = None
+            
+        def log_performance(label=""):
+            if psutil:
+                cpu_percent = process.cpu_percent()
+                memory_info = process.memory_info()
+                logging.info(f"[STTN-AUTO] {label} - Elapsed: {time.time() - start_time:.2f}s, "
+                             f"CPU: {cpu_percent}%, Memory: {memory_info.rss / 1024 / 1024:.2f} MB")
+            else:
+                logging.info(f"[STTN-AUTO] {label} - Elapsed: {time.time() - start_time:.2f}s")
+                
+        logging.info("[STTN-AUTO] Starting processing")
+        log_performance("Initialization")
         reader = None
         writer = None
         try:
             # 读取视频帧信息
+            logging.info("[STTN-AUTO] Reading frame info from video")
             reader, frame_info = self.read_frame_info_from_video()
+            log_performance("Frame info read")
             print(f"Frame info: {frame_info}")
             if input_sub_remover is not None:
                 ab_sections = input_sub_remover.ab_sections
@@ -302,6 +325,9 @@ class STTNAutoInpaint:
             if actual_frame_count % self.clip_gap != 0:
                 rec_time += 1
             print(f"Total frames: {actual_frame_count}, Clip gap: {self.clip_gap}, Rec time: {rec_time}")
+            logging.info(f"[STTN-AUTO] Processing plan - Total frames: {actual_frame_count}, "
+                         f"Clip gap: {self.clip_gap}, Rec time: {rec_time}")
+            log_performance("Processing plan calculated")
             
             # 计算分割高度，用于确定修复区域的大小
             split_h = int(frame_info['W_ori'] * 3 / 16)
@@ -330,9 +356,11 @@ class STTNAutoInpaint:
                 print(f"Frame dimensions: height={frame_info['H_ori']}, width={frame_info['W_ori']}")
             # 遍历每一次的迭代次数
             for i in range(rec_time):
+                iteration_start = time.time()
                 start_f = i * self.clip_gap  # 起始帧位置
                 end_f = min((i + 1) * self.clip_gap, actual_frame_count)  # 结束帧位置
                 print(f'Processing segment: {start_f + 1} - {end_f} / {actual_frame_count}')
+                logging.info(f"[STTN-AUTO] Processing segment {i+1}/{rec_time} - Frames: {start_f + 1} to {end_f}")
                 
                 frames_hr = []  # 高分辨率帧列表
                 frames = {}  # 帧字典，用于存储裁剪后的图像
@@ -349,7 +377,10 @@ class STTNAutoInpaint:
                 # 只在需要时打印详细信息
                 if config.skipFramesWithTextInSttnAuto.value:
                     print(f"Reading {end_f - start_f} frames from video")
+                logging.info(f"[STTN-AUTO] Reading {end_f - start_f} frames from video")
+                frame_read_start = time.time()
                 for j in range(start_f, end_f):
+                    frame_read_single_start = time.time()
                     success, image = reader.read()
                     if not success:
                         if config.skipFramesWithTextInSttnAuto.value:
@@ -365,18 +396,24 @@ class STTNAutoInpaint:
                     if (config.skipFramesWithTextInSttnAuto.value and 
                         self.subtitle_detector is not None and 
                         is_frame_number_in_ab_sections(j + start_frame, ab_sections)):
-                        if config.skipFramesWithTextInSttnAuto.value:
-                            print(f"Detecting text in frame {j + start_frame}")
-                        detected_text = self.subtitle_detector.detect_subtitle(image)
-                        contains_text = len(detected_text) > 0
-                        if contains_text:
-                            skipped_frames_count += 1
+                        # 在命令行模式下跳过OCR检测以提高性能
+                        if input_sub_remover and input_sub_remover.gui_mode:
+                            # GUI模式下继续进行OCR检测
                             if config.skipFramesWithTextInSttnAuto.value:
-                                print(f"Frame {j + start_frame} contains text, skipping...")
+                                print(f"Detecting text in frame {j + start_frame}")
+                            detected_text = self.subtitle_detector.detect_subtitle(image)
+                            contains_text = len(detected_text) > 0
+                            if contains_text:
+                                skipped_frames_count += 1
+                                if config.skipFramesWithTextInSttnAuto.value:
+                                    print(f"Frame {j + start_frame} contains text, skipping...")
+                            else:
+                                processed_frames_count += 1
+                                if config.skipFramesWithTextInSttnAuto.value:
+                                    print(f"Frame {j + start_frame} is clean, will be processed")
                         else:
+                            # 命令行模式跳过OCR检测
                             processed_frames_count += 1
-                            if config.skipFramesWithTextInSttnAuto.value:
-                                print(f"Frame {j + start_frame} is clean, will be processed")
                     elif is_frame_number_in_ab_sections(j + start_frame, ab_sections):
                         # 即使不检测文字也记录处理的帧
                         processed_frames_count += 1
@@ -399,6 +436,14 @@ class STTNAutoInpaint:
                                 print(f"Frame {j + start_frame}: Cropped region shape: {image_crop.shape}")
                             image_resize = cv2.resize(image_crop, (self.sttn_inpaint.model_input_width, self.sttn_inpaint.model_input_height))
                             frames[k].append(image_resize)
+                            
+                    # 记录单帧读取时间
+                    if j % 10 == 0:  # 每10帧记录一次
+                        logging.info(f"[STTN-AUTO] Frame {j} read in {time.time() - frame_read_single_start:.3f}s")
+                
+                logging.info(f"[STTN-AUTO] Finished reading frames in {time.time() - frame_read_start:.2f}s. "
+                             f"Valid: {valid_frames_count}, Processed: {processed_frames_count}, Skipped: {skipped_frames_count}")
+                log_performance(f"Segment {i+1} frame reading completed")
                 
                 print(f"Finished reading frames. Valid: {valid_frames_count}, Processed: {processed_frames_count}, Skipped: {skipped_frames_count}")
                 
@@ -409,11 +454,14 @@ class STTNAutoInpaint:
                     
                 # 对每个修复区域运行修复
                 for k in range(len(inpaint_area)):
+                    inpaint_start = time.time()
                     if len(frames[k]) > 0:  # 确保有帧可以处理
                         # 减少打印频率
                         if config.skipFramesWithTextInSttnAuto.value:
                             print(f"Running inpaint for area {k} with {len(frames[k])} frames")
                         comps[k] = self.sttn_inpaint.inpaint(frames[k])
+                        logging.info(f"[STTN-AUTO] Inpaint area {k} completed in {time.time() - inpaint_start:.2f}s")
+                        log_performance(f"Segment {i+1} area {k} inpaint completed")
                         if config.skipFramesWithTextInSttnAuto.value:
                             print(f"Completed processing area {k}")
                     else:
@@ -532,12 +580,15 @@ class STTNAutoInpaint:
             import traceback
             print(f"Error during video processing: {str(e)}")
             print(traceback.format_exc())
+            logging.error(f"[STTN-AUTO] Error during video processing: {str(e)}")
+            logging.error(traceback.format_exc())
             # 不抛出异常，允许程序继续执行
         finally:
             if writer:
                 writer.release()
             if reader:
                 reader.release()
+            logging.info(f"[STTN-AUTO] Processing completed in {time.time() - start_time:.2f}s")
 
 
 if __name__ == '__main__':
