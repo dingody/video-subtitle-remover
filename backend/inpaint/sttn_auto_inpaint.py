@@ -393,7 +393,9 @@ class STTNAutoInpaint:
                             if original_frame is not None and input_sub_remover.gui_mode:
                                 input_sub_remover.update_preview_with_comp(original_frame, frame)
         except Exception as e:
+            import traceback
             print(f"Error during video processing: {str(e)}")
+            print(traceback.format_exc())
             # 不抛出异常，允许程序继续执行
         finally:
             if writer:

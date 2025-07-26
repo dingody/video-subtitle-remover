@@ -3,6 +3,7 @@ import sys
 from functools import cached_property
 
 import cv2
+import numpy as np
 from tqdm import tqdm
 
 from .model_config import ModelConfig
