@@ -264,8 +264,16 @@ class SubtitleRemover:
                                         self.video_writer.write(inpainted_frame)
                                         # self.append_output(f'write frame: {start_frame_no + inner_index} with mask {sub_list[index]}')
                                         inner_index += 1
-                                        if self.gui_mode:
-                                            self.update_preview_with_comp(np.clip(batch[i]+mask[:,:,np.newaxis]*0.3,0,255).astype(np.uint8), inpainted_frame)
+                                        # 写入帧到两个writer（如果它们不同的话）
+                                        # 检查帧尺寸
+                                        print(f"Frame shape: {inpainted_frame.shape}, Expected: ({self.frame_height}, {self.frame_width}, 3)")
+                                        if inpainted_frame.shape[0] != self.frame_height or inpainted_frame.shape[1] != self.frame_width:
+                                            print(f"Frame dimensions mismatch! Resizing frame to {self.frame_height}x{self.frame_width}")
+                                            inpainted_frame = cv2.resize(inpainted_frame, (self.frame_width, self.frame_height))
+                                        
+                                        result1 = self.video_writer.write(inpainted_frame)
+                                        if not result1:
+                                            print(f"Error: Failed to write frame to main writer")
                                 self.update_progress(tbar, increment=len(batch))
 
     def sttn_auto_mode(self, tbar):
@@ -544,5 +552,29 @@ if __name__ == '__main__':
     sr.sub_areas = args.subtitle_area_coords
     sr.video_out_path = args.output
     config.inpaintMode.value = args.inpaint_mode
+    
+    # 添加日志记录功能
+    import logging
+    logging.basicConfig(
+        filename='/content/output.log',
+        level=logging.DEBUG,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    
+    # 重定向print输出到日志文件
+    class LogWriter:
+        def write(self, message):
+            if message.strip():  # 只记录非空行
+                logging.info(message.strip())
+        
+        def flush(self):
+            pass
+    
+    # 保存原始stdout
+    import sys
+    original_stdout = sys.stdout
+    # 将stdout重定向到日志
+    sys.stdout = LogWriter()
+    
     sr.run()
         

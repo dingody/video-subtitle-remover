@@ -445,6 +445,13 @@ class STTNAutoInpaint:
                             print(f"Skipped frame {absolute_frame_number}")
                 
                 # 写入帧到两个writer（如果它们不同的话）
+                # 检查帧尺寸
+                expected_shape = (frame_info['H_ori'], frame_info['W_ori'], 3)
+                print(f"Frame shape: {frame.shape}, Expected: {expected_shape}")
+                if frame.shape != expected_shape:
+                    print(f"Frame dimensions mismatch! Resizing frame to {frame_info['H_ori']}x{frame_info['W_ori']}")
+                    frame = cv2.resize(frame, (frame_info['W_ori'], frame_info['H_ori']))
+                
                 result1 = writer.write(frame)
                 if not result1:
                     print(f"Error: Failed to write frame {absolute_frame_number} to main writer")
