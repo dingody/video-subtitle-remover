@@ -482,14 +482,24 @@ class STTNAutoInpaint:
                     for j in range(start_f, end_f):
                         if j - start_f < valid_frames_count and is_frame_number_in_ab_sections(j + start_frame, ab_sections):
                             # 检查该帧是否包含文字（仅在启用配置时）
-                            contains_text = False
-                            if (config.skipFramesWithTextInSttnAuto.value and 
-                                self.subtitle_detector is not None):
-                                detected_text = self.subtitle_detector.detect_subtitle(frames_hr[j - start_f])
-                                contains_text = len(detected_text) > 0
+                    contains_text = False
+                    if (config.skipFramesWithTextInSttnAuto.value and 
+                        self.subtitle_detector is not None):
+                        # 在命令行模式下也进行OCR检测（因为这是STTN-AUTO模式的核心功能）
+                        if config.skipFramesWithTextInSttnAuto.value:
+                            print(f"Detecting text in frame {j + start_frame}")
+                        detected_text = self.subtitle_detector.detect_subtitle(frames_hr[j - start_f])
+                        contains_text = len(detected_text) > 0
+                        
+                        if contains_text:
+                            if config.skipFramesWithTextInSttnAuto.value:
+                                print(f"Frame {j + start_frame} contains text, will be processed")
+                        else:
+                            if config.skipFramesWithTextInSttnAuto.value:
+                                print(f"Frame {j + start_frame} is clean, skipping...")
                             
-                            # 只有不包含文字的帧才被标记为已处理
-                            if not contains_text:
+                            # 只有包含文字的帧才被标记为需要处理（注意：包含文字的帧需要进行inpaint处理）
+                            if contains_text:
                                 processed_frames_map[j - start_f] = processed_idx
                                 processed_idx += 1
                     

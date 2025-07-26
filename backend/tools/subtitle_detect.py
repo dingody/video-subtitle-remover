@@ -26,21 +26,30 @@ class SubtitleDetect:
 
     @cached_property
     def text_detector(self):
-        import paddle
-        paddle.disable_signal_handler()
-        from paddleocr.tools.infer import utility
-        from paddleocr.tools.infer.predict_det import TextDetector
-        hardware_accelerator = HardwareAccelerator.instance()
-        onnx_providers = hardware_accelerator.onnx_providers
-        model_config = ModelConfig()
-        parser = utility.init_args()
-        args = parser.parse_args([])
-        args.det_algorithm = 'DB'
-        args.det_model_dir = os.path.join(model_config.DET_MODEL_DIR, 'inference.onnx') if len(onnx_providers) > 0 else model_config.DET_MODEL_DIR
-        args.use_gpu=False
-        args.use_onnx=len(onnx_providers) > 0
-        args.onnx_providers=onnx_providers
-        return TextDetector(args)
+        try:
+            import paddle
+            paddle.disable_signal_handler()
+            from paddleocr.tools.infer import utility
+            from paddleocr.tools.infer.predict_det import TextDetector
+            hardware_accelerator = HardwareAccelerator.instance()
+            onnx_providers = hardware_accelerator.onnx_providers
+            model_config = ModelConfig()
+            parser = utility.init_args()
+            args = parser.parse_args([])
+            args.det_algorithm = 'DB'
+            args.det_model_dir = os.path.join(model_config.DET_MODEL_DIR, 'inference.onnx') if len(onnx_providers) > 0 else model_config.DET_MODEL_DIR
+            args.use_gpu=False
+            args.use_onnx=len(onnx_providers) > 0
+            args.onnx_providers=onnx_providers
+            print(f"[OCR] Initializing TextDetector with args: det_algorithm={args.det_algorithm}, det_model_dir={args.det_model_dir}, use_gpu={args.use_gpu}, use_onnx={args.use_onnx}")
+            detector = TextDetector(args)
+            print("[OCR] TextDetector initialized successfully")
+            return detector
+        except Exception as e:
+            print(f"[OCR] Failed to initialize TextDetector: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise
 
     def detect_subtitle(self, img):
         # 添加性能监控
@@ -81,19 +90,29 @@ class SubtitleDetect:
         
         def ocr_worker():
             try:
+                print("[OCR] Starting text detection")
+                print(f"[OCR] Image shape: {img.shape}, dtype: {img.dtype}")
+                print(f"[OCR] Text detector type: {type(self.text_detector)}")
                 dt_boxes, elapse = self.text_detector(img)
+                print(f"[OCR] Text detection completed in {elapse} seconds")
                 result[0] = (dt_boxes, elapse)
             except Exception as e:
                 print(f"OCR detection error: {str(e)}")
+                import traceback
+                traceback.print_exc()
                 result[0] = (None, 0)
         
         # 在单独的线程中运行OCR检测
+        print("[OCR] Starting OCR worker thread")
         thread = threading.Thread(target=ocr_worker)
         thread.daemon = True
         thread.start()
+        print("[OCR] OCR worker thread started")
         
-        # 等待最多3秒（减少超时时间）
-        thread.join(timeout=3.0)
+        # 等待最多5秒（增加超时时间以便调试）
+        print("[OCR] Waiting for OCR detection result (timeout=5s)")
+        thread.join(timeout=5.0)
+        print("[OCR] OCR detection wait completed")
         
         if thread.is_alive():
             print("OCR detection timed out")
