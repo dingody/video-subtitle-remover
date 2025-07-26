@@ -30,7 +30,9 @@ class STTNInpaint:
         # 1. 创建InpaintGenerator模型实例并装载到选择的设备上
         self.model = InpaintGenerator().to(self.device)
         # 2. 载入预训练模型的权重，转载模型的状态字典
-        self.model.load_state_dict(torch.load(model_path, map_location='cpu')['netG'])
+        # 根据设备选择合适的map_location
+        map_location = 'cpu' if self.device.type == 'cpu' else self.device
+        self.model.load_state_dict(torch.load(model_path, map_location=map_location)['netG'])
         # 3. # 将模型设置为评估模式
         self.model.eval()
         # 模型输入用的宽和高
@@ -148,11 +150,13 @@ class STTNInpaint:
         # 关闭梯度计算，用于推理阶段节省内存并加速
         with torch.no_grad():
             # 将处理好的帧通过编码器，产生特征表示
-            feats = self.model.encoder(feats.view(frame_length, 3, self.model_input_height, self.model_input_width))
+            feats_reshaped = feats.view(frame_length, 3, self.model_input_height, self.model_input_width)
+            feats_reshaped = feats_reshaped.to(self.device)  # 确保在正确的设备上
+            feats_encoded = self.model.encoder(feats_reshaped)
             # 获取特征维度信息
-            _, c, feat_h, feat_w = feats.size()
+            _, c, feat_h, feat_w = feats_encoded.size()
             # 调整特征形状以匹配模型的期望输入
-            feats = feats.view(1, frame_length, c, feat_h, feat_w)
+            feats = feats_encoded.view(1, frame_length, c, feat_h, feat_w)
         # 获取重绘区域
         # 在设定的邻居帧步幅内循环处理视频
         for f in range(0, frame_length, self.neighbor_stride):
@@ -164,9 +168,14 @@ class STTNInpaint:
             # 同样关闭梯度计算
             with torch.no_grad():
                 # 通过模型推断特征并传递给解码器以生成完成的帧
-                pred_feat = self.model.infer(feats[0, neighbor_ids + ref_ids, :, :, :])
+                feats_input = feats[0, neighbor_ids + ref_ids, :, :, :]
+                feats_input = feats_input.to(self.device)  # 确保在正确的设备上
+                pred_feat = self.model.infer(feats_input)
                 # 将预测的特征通过解码器生成图片，并应用激活函数tanh，然后分离出张量
                 pred_img = torch.tanh(self.model.decoder(pred_feat[:len(neighbor_ids), :, :, :])).detach()
+                # 确保结果在CPU上以便后续处理
+                if self.device.type != 'cpu':
+                    pred_img = pred_img.cpu()
                 # 将结果张量重新缩放到0到255的范围内（图像像素值）
                 pred_img = (pred_img + 1) / 2
                 # 将张量移动回CPU并转为NumPy数组

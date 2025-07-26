@@ -119,6 +119,8 @@ class HardwareAccelerator:
         当然SubtitleDetect放到一个独立进程去操作也是可以的
         """
         if self.__enabled:
+            if self.__cuda:
+                return torch.device("cuda:0")
             if self.__dml:
                 try:
                     import torch_directml
@@ -127,8 +129,6 @@ class HardwareAccelerator:
                 except:
                     traceback.print_exc()
                     self.__dml = False
-            if self.__cuda:
-                return torch.device("cuda:0")
             if self.__mps:
                 return torch.device("mps")
         return torch.device("cpu")
