@@ -576,5 +576,21 @@ if __name__ == '__main__':
     # 将stdout重定向到日志
     sys.stdout = LogWriter()
     
-    sr.run()
+    # 添加超时机制
+    import signal
+    
+    def timeout_handler(signum, frame):
+        raise TimeoutError("Processing timed out")
+    
+    # 设置30分钟超时
+    signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(30 * 60)  # 30分钟
+    
+    try:
+        sr.run()
+    except TimeoutError:
+        print("Processing timed out after 30 minutes")
+    finally:
+        # 取消超时
+        signal.alarm(0)
         

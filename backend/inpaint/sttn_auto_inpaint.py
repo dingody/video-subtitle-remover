@@ -132,6 +132,13 @@ class STTNInpaint:
                 frames[i] = np.array(frames[i])
                 
         frame_length = len(frames)
+        print(f"Starting inpaint processing for {frame_length} frames")
+        
+        # 检查CUDA内存
+        if torch.cuda.is_available():
+            print(f"CUDA memory - Allocated: {torch.cuda.memory_allocated() / 1024**3:.2f}GB, "
+                  f"Reserved: {torch.cuda.memory_reserved() / 1024**3:.2f}GB")
+        
         # 对帧进行预处理转换为张量，并进行归一化
         feats = _to_tensors(frames).unsqueeze(0) * 2 - 1
         # 把特征张量转移到指定的设备（CPU或GPU）
@@ -149,6 +156,7 @@ class STTNInpaint:
         # 获取重绘区域
         # 在设定的邻居帧步幅内循环处理视频
         for f in range(0, frame_length, self.neighbor_stride):
+            print(f"Processing batch {f//self.neighbor_stride + 1}/{(frame_length-1)//self.neighbor_stride + 1}")
             # 计算邻近帧的ID
             neighbor_ids = [i for i in range(max(0, f - self.neighbor_stride), min(frame_length, f + self.neighbor_stride + 1))]
             # 获取参考帧的索引
@@ -175,6 +183,7 @@ class STTNInpaint:
                         # 如果此位置之前已有图片，则将新旧图片混合以提高质量
                         comp_frames[idx] = comp_frames[idx].astype(np.float32) * 0.5 + img.astype(np.float32) * 0.5
         # 返回处理完成的帧序列
+        print(f"Completed inpaint processing for {frame_length} frames")
         return comp_frames
 
 
