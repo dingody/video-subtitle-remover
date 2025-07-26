@@ -29,8 +29,9 @@ def batch_generator(data, max_batch_size):
         yield data[last_batch_start:]
 
 def create_mask(size, coords_list):
-    mask = np.zeros(size, dtype="uint8")
-    print(f"Creating mask with size: {size}")
+    # size应该是(宽度, 高度)格式
+    mask = np.zeros((size[1], size[0]), dtype="uint8")  # 创建(高度, 宽度)的掩码
+    print(f"Creating mask with size: {mask.shape} (height, width)")
     if coords_list:
         for coords in coords_list:
             # 期望的坐标格式是(ymin, ymax, xmin, xmax)

@@ -65,7 +65,8 @@ class SubtitleRemover:
         # 视频尺寸
         self.size = (int(self.video_cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(self.video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
         # 注意：掩码尺寸应该是(高度, 宽度)，与视频帧的形状一致
-        self.mask_size = (int(self.video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT)), int(self.video_cap.get(cv2.CAP_PROP_FRAME_WIDTH)))
+        # 但这里我们使用(宽度, 高度)来匹配create_mask函数的期望
+        self.mask_size = (int(self.video_cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(self.video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
         self.frame_height = int(self.video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.frame_width = int(self.video_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         print(f"Video size: {self.size}, Mask size: {self.mask_size}")
