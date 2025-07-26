@@ -342,7 +342,7 @@ class STTNAutoInpaint:
                         for k in range(len(inpaint_area)):
                             # 裁剪、缩放并添加到帧字典
                             # 注意：inpaint_area的格式是(ymin, ymax, xmin, xmax)
-                            image_crop = image[inpaint_area[k][0]:inpaint_area[k][1], :, :]  # 正确使用y坐标
+                            image_crop = image[inpaint_area[k][0]:inpaint_area[k][1], inpaint_area[k][2]:inpaint_area[k][3], :]  # 正确使用y和x坐标
                             print(f"Frame {j + start_frame}: Cropped region shape: {image_crop.shape}")
                             image_resize = cv2.resize(image_crop, (self.sttn_inpaint.model_input_width, self.sttn_inpaint.model_input_height))
                             frames[k].append(image_resize)
@@ -400,7 +400,7 @@ class STTNAutoInpaint:
                             # 在应用修复前检查特定像素
                             # 选择修复区域内的像素点进行检查
                             check_y = (inpaint_area[k][0] + inpaint_area[k][1]) // 2
-                            check_x = frame.shape[1] // 2  # 图像宽度的中点
+                            check_x = (inpaint_area[k][2] + inpaint_area[k][3]) // 2  # 修复区域的中心点
                             if check_y < frame.shape[0] and check_x < frame.shape[1]:
                                 before_pixel = frame[check_y, check_x].copy()  # 保存修复前的像素值
                                 print(f"Checking pixel at ({check_y}, {check_x}): {before_pixel}")
@@ -413,11 +413,11 @@ class STTNAutoInpaint:
                                     comp = cv2.resize(comps[k][comp_idx], (frame_info['W_ori'], split_h))
                                     comp = cv2.cvtColor(np.array(comp).astype(np.uint8), cv2.COLOR_BGR2RGB)
                                     # 注意：inpaint_area的格式是(ymin, ymax, xmin, xmax)
-                                    mask_area = mask[inpaint_area[k][0]:inpaint_area[k][1], :]  # 正确使用y坐标
+                                    mask_area = mask[inpaint_area[k][0]:inpaint_area[k][1], inpaint_area[k][2]:inpaint_area[k][3]]  # 正确使用y和x坐标
                                     # 检查是否应该应用修复
                                     if mask_area.sum() > 0:  # 只有掩码非空时才应用修复
                                         print(f"Applying inpaint to area: {inpaint_area[k]}, mask_area sum: {mask_area.sum()}")
-                                        frame[inpaint_area[k][0]:inpaint_area[k][1], :, :] = mask_area * comp + (1 - mask_area) * frame[inpaint_area[k][0]:inpaint_area[k][1], :, :]
+                                        frame[inpaint_area[k][0]:inpaint_area[k][1], inpaint_area[k][2]:inpaint_area[k][3], :] = mask_area * comp + (1 - mask_area) * frame[inpaint_area[k][0]:inpaint_area[k][1], inpaint_area[k][2]:inpaint_area[k][3], :]
                             # 检查修复后的像素值
                             if before_pixel is not None and check_y < frame.shape[0] and check_x < frame.shape[1]:
                                 after_pixel = frame[check_y, check_x]
@@ -432,12 +432,12 @@ class STTNAutoInpaint:
                             print(f"Skipped frame {absolute_frame_number}")
                 
                 # 写入帧到两个writer（如果它们不同的话）
-                writer.write(frame)
+                result1 = writer.write(frame)
                 if standalone_writer != writer:
-                    standalone_writer.write(frame)
-                    print(f"Wrote frame {absolute_frame_number} to standalone writer")
+                    result2 = standalone_writer.write(frame)
+                    print(f"Wrote frame {absolute_frame_number} to standalone writer, success: {result2}")
                 else:
-                    print(f"Wrote frame {absolute_frame_number} to writer")
+                    print(f"Wrote frame {absolute_frame_number} to writer, success: {result1}")
                 
                 if input_sub_remover is not None:
                     if tbar is not None:

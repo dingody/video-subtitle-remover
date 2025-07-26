@@ -67,6 +67,7 @@ class SubtitleRemover:
         self.mask_size = (int(self.video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT)), int(self.video_cap.get(cv2.CAP_PROP_FRAME_WIDTH)))
         self.frame_height = int(self.video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.frame_width = int(self.video_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        print(f"Video size: {self.size}, Mask size: {self.mask_size}")
         
         # 计算实际要处理的帧数
         self.start_frame = int(self.start_time * self.fps) if self.start_time > 0 else 0
@@ -275,7 +276,8 @@ class SubtitleRemover:
         mask_area_coordinates = []
         for sub_area in self.sub_areas:
             ymin, ymax, xmin, xmax = sub_area
-            mask_area_coordinates.append((xmin, xmax, ymin, ymax))
+            # 保持原始坐标格式(ymin, ymax, xmin, xmax)
+            mask_area_coordinates.append((ymin, ymax, xmin, xmax))
         mask = create_mask(self.mask_size, mask_area_coordinates)
         # 检查掩码是否正确创建
         mask_sum = mask.sum()

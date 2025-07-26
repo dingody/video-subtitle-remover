@@ -33,18 +33,20 @@ def create_mask(size, coords_list):
     print(f"Creating mask with size: {size}")
     if coords_list:
         for coords in coords_list:
-            xmin, xmax, ymin, ymax = coords
-            print(f"Coords: xmin={xmin}, xmax={xmax}, ymin={ymin}, ymax={ymax}")
-            # 为了避免框过小，放大10个像素
-            x1 = xmin - config.subtitleAreaDeviationPixel.value
-            if x1 < 0:
-                x1 = 0
+            # 期望的坐标格式是(ymin, ymax, xmin, xmax)
+            ymin, ymax, xmin, xmax = coords
+            print(f"Coords: ymin={ymin}, ymax={ymax}, xmin={xmin}, xmax={xmax}")
+            # 为了避免框过小，放大指定像素
             y1 = ymin - config.subtitleAreaDeviationPixel.value
             if y1 < 0:
                 y1 = 0
-            x2 = xmax + config.subtitleAreaDeviationPixel.value
+            x1 = xmin - config.subtitleAreaDeviationPixel.value
+            if x1 < 0:
+                x1 = 0
             y2 = ymax + config.subtitleAreaDeviationPixel.value
-            print(f"Adjusted coords: x1={x1}, y1={y1}, x2={x2}, y2={y2}")
+            x2 = xmax + config.subtitleAreaDeviationPixel.value
+            print(f"Adjusted coords: y1={y1}, x1={x1}, y2={y2}, x2={x2}")
+            # 注意：OpenCV中rectangle函数的坐标是(x, y)格式
             cv2.rectangle(mask, (x1, y1),
                           (x2, y2), (255, 255, 255), thickness=-1)
     print(f"Mask sum: {mask.sum()}")
