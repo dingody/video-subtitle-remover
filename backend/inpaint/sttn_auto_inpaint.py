@@ -54,6 +54,10 @@ class STTNInpaint:
         inpaint_area = get_inpaint_area_by_mask(W_ori, H_ori, split_h, mask)
         # 打印修复区域信息以便调试
         print(f"Inpaint areas: {inpaint_area}")
+        print(f"Mask shape: {mask.shape}, Mask sum: {mask.sum()}")
+        # 检查掩码中是否有非零值
+        if mask.sum() == 0:
+            print("Warning: Mask is empty!")
         # 初始化帧存储变量
         # 高分辨率帧存储列表
         frames_hr = copy.deepcopy(input_frames)
@@ -315,6 +319,7 @@ class STTNAutoInpaint:
                             # 裁剪、缩放并添加到帧字典
                             # 注意：inpaint_area的格式是(ymin, ymax, xmin, xmax)
                             image_crop = image[inpaint_area[k][0]:inpaint_area[k][1], :, :]  # 正确使用y坐标
+                            print(f"Frame {j + start_frame}: Cropped region shape: {image_crop.shape}")  # 添加调试信息
                             image_resize = cv2.resize(image_crop, (self.sttn_inpaint.model_input_width, self.sttn_inpaint.model_input_height))
                             frames[k].append(image_resize)
                 
@@ -369,21 +374,31 @@ class STTNAutoInpaint:
                         frame = frames_hr[j]
                         
                         # 只有被处理过的帧才应用修复结果
-                        if j in processed_frames_map:
-                            comp_idx = processed_frames_map[j]
-                            for k in range(len(inpaint_area)):
-                                if comp_idx < len(comps[k]):  # 确保索引有效
-                                    # 将修复的图像重新扩展到原始分辨率，并融合到原始帧
-                                    comp = cv2.resize(comps[k][comp_idx], (frame_info['W_ori'], split_h))
-                                    comp = cv2.cvtColor(np.array(comp).astype(np.uint8), cv2.COLOR_BGR2RGB)
-                                    # 注意：inpaint_area的格式是(ymin, ymax, xmin, xmax)
-                                    mask_area = mask[inpaint_area[k][0]:inpaint_area[k][1], :]  # 正确使用y坐标
-                                    # 检查是否应该应用修复
-                                    if mask_area.sum() > 0:  # 只有掩码非空时才应用修复
-                                        frame[inpaint_area[k][0]:inpaint_area[k][1], :, :] = mask_area * comp + (1 - mask_area) * frame[inpaint_area[k][0]:inpaint_area[k][1], :, :]
-                            print(f"Applied inpainting to frame {absolute_frame_number}")
-                        else:
-                            print(f"Skipped frame {absolute_frame_number}")
+                if j in processed_frames_map:
+                    comp_idx = processed_frames_map[j]
+                    # 在应用修复前检查特定像素
+                    before_pixel = frame[650, 300].copy()  # 保存修复前的像素值
+                    for k in range(len(inpaint_area)):
+                        if comp_idx < len(comps[k]):  # 确保索引有效
+                            # 将修复的图像重新扩展到原始分辨率，并融合到原始帧
+                            comp = cv2.resize(comps[k][comp_idx], (frame_info['W_ori'], split_h))
+                            comp = cv2.cvtColor(np.array(comp).astype(np.uint8), cv2.COLOR_BGR2RGB)
+                            # 注意：inpaint_area的格式是(ymin, ymax, xmin, xmax)
+                            mask_area = mask[inpaint_area[k][0]:inpaint_area[k][1], :]  # 正确使用y坐标
+                            # 检查是否应该应用修复
+                            # 检查是否应该应用修复
+                        if mask_area.sum() > 0:  # 只有掩码非空时才应用修复
+                            print(f"Applying inpaint to area: {inpaint_area[k]}, mask_area sum: {mask_area.sum()}")
+                            frame[inpaint_area[k][0]:inpaint_area[k][1], :, :] = mask_area * comp + (1 - mask_area) * frame[inpaint_area[k][0]:inpaint_area[k][1], :, :]
+                    # 检查修复后的像素值
+                    after_pixel = frame[650, 300]
+                    # 只有像素值发生变化时才报告
+                    if not np.array_equal(before_pixel, after_pixel):
+                        print(f"Applied inpainting to frame {absolute_frame_number} - Pixel changed from {before_pixel} to {after_pixel}")
+                    else:
+                        print(f"Applied inpainting to frame {absolute_frame_number} - No visible change")
+                else:
+                    print(f"Skipped frame {absolute_frame_number}")
                         
                         writer.write(frame)
                         
