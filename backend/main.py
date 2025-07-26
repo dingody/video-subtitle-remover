@@ -31,7 +31,7 @@ from tqdm import tqdm
 import numpy as np
 
 class SubtitleRemover:
-    def __init__(self, vd_path, gui_mode=False):
+    def __init__(self, vd_path, gui_mode=False, start_time=0, end_time=None):
         # 线程锁
         self.lock = threading.RLock()
         # 用户指定的字幕区域位置
@@ -47,6 +47,15 @@ class SubtitleRemover:
         # 视频路径
         self.video_path = vd_path
         self.video_cap = cv2.VideoCapture(get_readable_path(vd_path))
+        
+        # 设置视频处理的起始和结束时间
+        self.start_time = start_time
+        self.end_time = end_time
+        
+        # 如果指定了开始时间，设置视频从该时间开始
+        if self.start_time > 0:
+            self.video_cap.set(cv2.CAP_PROP_POS_MSEC, self.start_time * 1000)
+        
         # 通过视频路径获取视频名称
         self.vd_name = Path(self.video_path).stem
         # 视频帧总数
@@ -58,6 +67,12 @@ class SubtitleRemover:
         self.mask_size = (int(self.video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT)), int(self.video_cap.get(cv2.CAP_PROP_FRAME_WIDTH)))
         self.frame_height = int(self.video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.frame_width = int(self.video_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        
+        # 计算实际要处理的帧数
+        self.start_frame = int(self.start_time * self.fps) if self.start_time > 0 else 0
+        self.end_frame = int(self.end_time * self.fps) if self.end_time is not None else self.frame_count
+        self.actual_frame_count = min(self.end_frame, self.frame_count) - self.start_frame
+        
         # 创建视频临时对象，windows下delete=True会有permission denied的报错
         self.video_temp_file = tempfile.NamedTemporaryFile(suffix='.mp4', delete=False)
         # 创建视频写对象
@@ -166,12 +181,15 @@ class SubtitleRemover:
         device = self.hardware_accelerator.device if self.hardware_accelerator.has_cuda() else torch.device("cpu")
         propainter_inpaint = PropainterInpaint(device, self.model_config.PROPAINTER_MODEL_DIR, config.propainterMaxLoadNum.value)
         self.append_output(tr['Main']['ProcessingStartRemovingSubtitles'])
-        index = 0
+        index = self.start_frame
         while True:
             ret, frame = self.video_cap.read()
             if not ret:
                 break
             index += 1
+            # 如果超出结束帧，则结束
+            if self.end_frame is not None and index > self.end_frame:
+                break
             # 如果当前帧没有水印/文本则直接写
             if index not in sub_list.keys():
                 self.video_writer.write(frame)
@@ -188,6 +206,9 @@ class SubtitleRemover:
                     # self.append_output(f'find start: {start_frame_no}')
                     # 找到结束帧
                     end_frame_no = self.find_frame_no_end(index, continuous_frame_no_list)
+                    # 确保结束帧不超过指定范围
+                    if self.end_frame is not None:
+                        end_frame_no = min(end_frame_no, self.end_frame)
                     # 判断当前帧号是不是字幕起始位置
                     # 如果获取的结束帧号不为-1则说明
                     if end_frame_no != -1:
@@ -203,6 +224,9 @@ class SubtitleRemover:
                             if not ret:
                                 break
                             index += 1
+                            # 如果超出结束帧，则结束
+                            if self.end_frame is not None and index > self.end_frame:
+                                break
                             temp_frames.append(frame)
                         # ************ 读取该区间所有帧 end ************
                         if len(temp_frames) < 1:
@@ -252,7 +276,9 @@ class SubtitleRemover:
             self.hardware_accelerator.device, 
             self.model_config.STTN_AUTO_MODEL_PATH, 
             self.video_path,
-            sub_areas=self.sub_areas
+            sub_areas=self.sub_areas,
+            start_time=self.start_time,
+            end_time=self.end_time
         )
         sttn_video_inpaint(input_mask=mask, input_sub_remover=self, tbar=tbar)
 
@@ -273,7 +299,7 @@ class SubtitleRemover:
         for interval in continuous_frame_no_list:
             start, end = interval
             start_end_map[start] = end
-        current_frame_index = 0
+        current_frame_index = self.start_frame
         self.append_output(tr['Main']['ProcessingStartRemovingSubtitles'])
         while True:
             ret, frame = self.video_cap.read()
@@ -281,6 +307,9 @@ class SubtitleRemover:
             if not ret:
                 break
             current_frame_index += 1
+            # 如果超出结束帧，则结束
+            if self.end_frame is not None and current_frame_index > self.end_frame:
+                break
             # 判断当前帧号是不是字幕区间开始, 如果不是，则直接写
             if current_frame_index not in start_end_map.keys():
                 self.video_writer.write(frame)
@@ -291,6 +320,9 @@ class SubtitleRemover:
             else:
                 start_frame_index = current_frame_index
                 end_frame_index = start_end_map[current_frame_index]
+                # 确保结束帧不超过指定范围
+                if self.end_frame is not None:
+                    end_frame_index = min(end_frame_index, self.end_frame)
                 tbar.write(f'processing frame {start_frame_index} to {end_frame_index}')
                 # 用于存储需要去字幕的视频帧
                 frames_need_inpaint = list()
@@ -302,6 +334,9 @@ class SubtitleRemover:
                     if not ret:
                         break
                     current_frame_index += 1
+                    # 如果超出结束帧，则结束
+                    if self.end_frame is not None and current_frame_index > self.end_frame:
+                        break
                     frames_need_inpaint.append(frame)
                 mask_area_coordinates = []
                 # 1. 获取当前批次的mask坐标全集
@@ -344,7 +379,7 @@ class SubtitleRemover:
         os.makedirs(os.path.dirname(self.video_out_path), exist_ok=True)
         # 重置进度条
         self.progress_total = 0
-        tbar = tqdm(total=int(self.frame_count), unit='frame', position=0, file=sys.__stdout__,
+        tbar = tqdm(total=int(self.actual_frame_count), unit='frame', position=0, file=sys.__stdout__,
                     desc='Subtitle Removing')
         if self.is_picture:
             original_frame = read_image(self.video_path)
@@ -471,7 +506,7 @@ if __name__ == '__main__':
     config.set(config.interface, 'en')
     TRANSLATION_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'interface', f"{config.interface.value}.ini")
     tr.read(TRANSLATION_FILE, encoding='utf-8')
-    sr = SubtitleRemover(args.input)
+    sr = SubtitleRemover(args.input, start_time=args.start_time, end_time=args.end_time)
     if not is_video_or_image(args.input):
         sr.append_output(f'Error: {video_path} is not supported not corrupted.')
         exit(-1)

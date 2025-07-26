@@ -172,6 +172,11 @@ class STTNAutoInpaint:
     def read_frame_info_from_video(self):
         # 使用opencv读取视频
         reader = cv2.VideoCapture(self.video_path)
+        
+        # 如果指定了开始时间，设置视频从该时间开始
+        if self.start_time > 0:
+            reader.set(cv2.CAP_PROP_POS_MSEC, self.start_time * 1000)
+        
         # 获取视频的宽度, 高度, 帧率和帧数信息并存储在frame_info字典中
         frame_info = {
             'W_ori': int(reader.get(cv2.CAP_PROP_FRAME_WIDTH) + 0.5),  # 视频的原始宽度
@@ -179,10 +184,19 @@ class STTNAutoInpaint:
             'fps': reader.get(cv2.CAP_PROP_FPS),  # 视频的帧率
             'len': int(reader.get(cv2.CAP_PROP_FRAME_COUNT) + 0.5)  # 视频的总帧数
         }
+        
+        # 计算实际要处理的帧数
+        start_frame = int(self.start_time * frame_info['fps']) if self.start_time > 0 else 0
+        end_frame = int(self.end_time * frame_info['fps']) if self.end_time is not None else frame_info['len']
+        actual_frame_count = min(end_frame, frame_info['len']) - start_frame
+        frame_info['actual_len'] = actual_frame_count
+        frame_info['start_frame'] = start_frame
+        frame_info['end_frame'] = end_frame
+        
         # 返回视频读取对象、帧信息和视频写入对象
         return reader, frame_info
 
-    def __init__(self, device, model_path, video_path, mask_path=None, clip_gap=None, sub_areas=None):
+    def __init__(self, device, model_path, video_path, mask_path=None, clip_gap=None, sub_areas=None, start_time=0, end_time=None):
         # STTNInpaint视频修复实例初始化
         self.sttn_inpaint = STTNInpaint(device, model_path)
         # 视频和掩码路径
@@ -203,6 +217,10 @@ class STTNAutoInpaint:
         self.subtitle_detector = None
         if sub_areas is not None:
             self.subtitle_detector = SubtitleDetect(video_path, sub_areas)
+            
+        # 视频处理的起始和结束时间
+        self.start_time = start_time
+        self.end_time = end_time
 
     def __call__(self, input_mask=None, input_sub_remover=None, tbar=None):
         reader = None
@@ -219,8 +237,13 @@ class STTNAutoInpaint:
                 # 创建视频写入对象，用于输出修复后的视频
                 writer = cv2.VideoWriter(self.video_out_path, cv2.VideoWriter_fourcc(*"mp4v"), frame_info['fps'], (frame_info['W_ori'], frame_info['H_ori']))
             
+            # 使用实际帧数而不是总帧数
+            total_frames = frame_info.get('actual_len', frame_info['len'])
+            start_frame = frame_info.get('start_frame', 0)
+            end_frame = frame_info.get('end_frame', frame_info['len'])
+            
             # 计算需要迭代修复视频的次数
-            rec_time = frame_info['len'] // self.clip_gap if frame_info['len'] % self.clip_gap == 0 else frame_info['len'] // self.clip_gap + 1
+            rec_time = total_frames // self.clip_gap if total_frames % self.clip_gap == 0 else total_frames // self.clip_gap + 1
             # 计算分割高度，用于确定修复区域的大小
             split_h = int(frame_info['W_ori'] * 3 / 16)
             
@@ -236,8 +259,8 @@ class STTNAutoInpaint:
             # 遍历每一次的迭代次数
             for i in range(rec_time):
                 start_f = i * self.clip_gap  # 起始帧位置
-                end_f = min((i + 1) * self.clip_gap, frame_info['len'])  # 结束帧位置
-                tqdm.write(f'Processing: {start_f + 1} - {end_f} / Total: {frame_info['len']}')
+                end_f = min((i + 1) * self.clip_gap, total_frames)  # 结束帧位置
+                tqdm.write(f'Processing: {start_f + 1} - {end_f} / Total: {total_frames}')
                 
                 frames_hr = []  # 高分辨率帧列表
                 frames = {}  # 帧字典，用于存储裁剪后的图像
@@ -259,7 +282,7 @@ class STTNAutoInpaint:
                     contains_text = False
                     if (config.skipFramesWithTextInSttnAuto.value and 
                         self.subtitle_detector is not None and 
-                        is_frame_number_in_ab_sections(j, ab_sections)):
+                        is_frame_number_in_ab_sections(j + start_frame, ab_sections)):
                         detected_text = self.subtitle_detector.detect_subtitle(image)
                         contains_text = len(detected_text) > 0
                     
@@ -267,7 +290,7 @@ class STTNAutoInpaint:
                     valid_frames_count += 1
                     
                     # 只有不包含文字的帧才进行处理
-                    if is_frame_number_in_ab_sections(j, ab_sections) and not contains_text:
+                    if is_frame_number_in_ab_sections(j + start_frame, ab_sections) and not contains_text:
                         for k in range(len(inpaint_area)):
                             # 裁剪、缩放并添加到帧字典
                             image_crop = image[inpaint_area[k][0]:inpaint_area[k][1], :, :]
@@ -294,7 +317,7 @@ class STTNAutoInpaint:
                     
                     # 构建映射关系
                     for j in range(start_f, end_f):
-                        if j - start_f < valid_frames_count and is_frame_number_in_ab_sections(j, ab_sections):
+                        if j - start_f < valid_frames_count and is_frame_number_in_ab_sections(j + start_frame, ab_sections):
                             # 检查该帧是否包含文字（仅在启用配置时）
                             contains_text = False
                             if (config.skipFramesWithTextInSttnAuto.value and 

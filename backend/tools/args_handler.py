@@ -24,6 +24,14 @@ def parse_args():
         choices=[mode.name.lower().replace('_','-') for mode in InpaintMode],
         help="Inpaint mode, default is sttn-auto"
     )
+    parser.add_argument(
+        "--start-time", type=float, default=0,
+        help="Start time in seconds (default: 0)"
+    )
+    parser.add_argument(
+        "--end-time", type=float, default=None,
+        help="End time in seconds (default: end of video)"
+    )
     args = parser.parse_args()
     args.inpaint_mode = InpaintMode[args.inpaint_mode.replace('-','_').upper()]
     if args.subtitle_area_coords is None:
