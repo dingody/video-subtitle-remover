@@ -267,6 +267,7 @@ class SubtitleRemover:
         使用sttn对选中区域进行重绘，不进行字幕检测
         """
         self.append_output(tr['Main']['ProcessingStartRemovingSubtitles'])
+        self.append_output(f"Processing time range: {self.start_time}s to {self.end_time}s")
         mask_area_coordinates = []
         for sub_area in self.sub_areas:
             ymin, ymax, xmin, xmax = sub_area

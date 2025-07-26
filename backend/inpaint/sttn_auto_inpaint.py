@@ -223,6 +223,7 @@ class STTNAutoInpaint:
         self.end_time = end_time
 
     def __call__(self, input_mask=None, input_sub_remover=None, tbar=None):
+        print(f"STTNAutoInpaint started with time range: {self.start_time}s to {self.end_time}s")  # 添加日志
         reader = None
         writer = None
         try:
@@ -272,6 +273,8 @@ class STTNAutoInpaint:
                     
                 # 读取和修复高分辨率帧
                 valid_frames_count = 0
+                processed_frames_count = 0  # 新增：记录实际处理的帧数
+                skipped_frames_count = 0    # 新增：记录跳过的帧数
                 for j in range(start_f, end_f):
                     success, image = reader.read()
                     if not success:
@@ -285,6 +288,15 @@ class STTNAutoInpaint:
                         is_frame_number_in_ab_sections(j + start_frame, ab_sections)):
                         detected_text = self.subtitle_detector.detect_subtitle(image)
                         contains_text = len(detected_text) > 0
+                        if contains_text:
+                            print(f"Frame {j + start_frame} contains text, skipping...")  # 添加日志
+                            skipped_frames_count += 1
+                        else:
+                            print(f"Frame {j + start_frame} is clean, will be processed")  # 添加日志
+                            processed_frames_count += 1
+                    elif is_frame_number_in_ab_sections(j + start_frame, ab_sections):
+                        # 即使不检测文字也记录处理的帧
+                        processed_frames_count += 1
                     
                     frames_hr.append(image)
                     valid_frames_count += 1
@@ -296,6 +308,8 @@ class STTNAutoInpaint:
                             image_crop = image[inpaint_area[k][0]:inpaint_area[k][1], :, :]
                             image_resize = cv2.resize(image_crop, (self.sttn_inpaint.model_input_width, self.sttn_inpaint.model_input_height))
                             frames[k].append(image_resize)
+                
+                print(f"Segment stats - Total frames: {valid_frames_count}, Processed frames: {processed_frames_count}, Skipped frames: {skipped_frames_count}")  # 添加日志
                 
                 # 如果没有读取到有效帧，则跳过当前迭代
                 if valid_frames_count == 0:
@@ -330,6 +344,8 @@ class STTNAutoInpaint:
                                 processed_frames_map[j - start_f] = processed_idx
                                 processed_idx += 1
                     
+                    print(f"Processed frames map: {processed_frames_map}")  # 添加日志
+                    
                     # 应用修复结果
                     for j in range(valid_frames_count):
                         if input_sub_remover is not None and input_sub_remover.gui_mode:
@@ -349,6 +365,9 @@ class STTNAutoInpaint:
                                     comp = cv2.cvtColor(np.array(comp).astype(np.uint8), cv2.COLOR_BGR2RGB)
                                     mask_area = mask[inpaint_area[k][0]:inpaint_area[k][1], :]
                                     frame[inpaint_area[k][0]:inpaint_area[k][1], :, :] = mask_area * comp + (1 - mask_area) * frame[inpaint_area[k][0]:inpaint_area[k][1], :, :]
+                            print(f"Applied inpainting to frame {j + start_frame}")  # 添加日志
+                        else:
+                            print(f"Skipped inpainting for frame {j + start_frame}")  # 添加日志
                         
                         writer.write(frame)
                         
