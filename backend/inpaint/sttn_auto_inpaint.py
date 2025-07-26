@@ -399,10 +399,10 @@ class STTNAutoInpaint:
                         print(f"Applied inpainting to frame {absolute_frame_number} - No visible change")
                 else:
                     print(f"Skipped frame {absolute_frame_number}")
-                        
-                        writer.write(frame)
-                        
-                        if input_sub_remover is not None:
+                    
+                    writer.write(frame)
+                    
+                    if input_sub_remover is not None:
                             if tbar is not None:
                                 input_sub_remover.update_progress(tbar, increment=1)
                             if original_frame is not None and input_sub_remover.gui_mode:
