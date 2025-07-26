@@ -243,17 +243,20 @@ class STTNAutoInpaint:
         try:
             # 读取视频帧信息
             reader, frame_info = self.read_frame_info_from_video()
+            print(f"Frame info: {frame_info}")
             if input_sub_remover is not None:
                 ab_sections = input_sub_remover.ab_sections
                 # 使用input_sub_remover的writer来写入处理过的帧
                 writer = input_sub_remover.video_writer
                 # 在STTN-AUTO模式下创建一个新的writer用于输出只包含处理片段的视频
                 standalone_writer = cv2.VideoWriter(self.video_out_path, cv2.VideoWriter_fourcc(*"mp4v"), frame_info['fps'], (frame_info['W_ori'], frame_info['H_ori']))
+                print(f"Created standalone writer: {self.video_out_path}")
             else:
                 ab_sections = None
                 # 创建视频写入对象，用于输出修复后的视频
                 writer = cv2.VideoWriter(self.video_out_path, cv2.VideoWriter_fourcc(*"mp4v"), frame_info['fps'], (frame_info['W_ori'], frame_info['H_ori']))
                 standalone_writer = writer
+                print(f"Created writer: {self.video_out_path}")
             
             # 使用实际帧数而不是总帧数
             total_frames = frame_info.get('actual_len', frame_info['len'])
@@ -275,6 +278,19 @@ class STTNAutoInpaint:
                 
             # 得到修复区域位置
             inpaint_area = get_inpaint_area_by_mask(frame_info['W_ori'], frame_info['H_ori'], split_h, mask)
+            # 打印修复区域信息以便调试
+            print(f"Inpaint areas: {inpaint_area}")
+            print(f"Mask shape: {mask.shape}, Mask sum: {mask.sum()}")
+            # 检查掩码中是否有非零值
+            if mask.sum() == 0:
+                print("Warning: Mask is empty!")
+            # 验证修复区域是否在图像范围内
+            for i, area in enumerate(inpaint_area):
+                ymin, ymax, xmin, xmax = area
+                if ymin < 0 or ymax > frame_info['H_ori'] or xmin < 0 or xmax > frame_info['W_ori']:
+                    print(f"Warning: Inpaint area {i} is out of bounds: {area}")
+                print(f"Inpaint area {i}: ymin={ymin}, ymax={ymax}, xmin={xmin}, xmax={xmax}")
+                print(f"Frame dimensions: height={frame_info['H_ori']}, width={frame_info['W_ori']}")
             # 遍历每一次的迭代次数
             for i in range(rec_time):
                 start_f = i * self.clip_gap  # 起始帧位置
@@ -327,7 +343,7 @@ class STTNAutoInpaint:
                             # 裁剪、缩放并添加到帧字典
                             # 注意：inpaint_area的格式是(ymin, ymax, xmin, xmax)
                             image_crop = image[inpaint_area[k][0]:inpaint_area[k][1], :, :]  # 正确使用y坐标
-                            print(f"Frame {j + start_frame}: Cropped region shape: {image_crop.shape}")  # 添加调试信息
+                            print(f"Frame {j + start_frame}: Cropped region shape: {image_crop.shape}")
                             image_resize = cv2.resize(image_crop, (self.sttn_inpaint.model_input_width, self.sttn_inpaint.model_input_height))
                             frames[k].append(image_resize)
                 
@@ -382,7 +398,15 @@ class STTNAutoInpaint:
                         if j in processed_frames_map:
                             comp_idx = processed_frames_map[j]
                             # 在应用修复前检查特定像素
-                            before_pixel = frame[650, 300].copy()  # 保存修复前的像素值
+                            # 选择修复区域内的像素点进行检查
+                            check_y = (inpaint_area[k][0] + inpaint_area[k][1]) // 2
+                            check_x = frame.shape[1] // 2  # 图像宽度的中点
+                            if check_y < frame.shape[0] and check_x < frame.shape[1]:
+                                before_pixel = frame[check_y, check_x].copy()  # 保存修复前的像素值
+                                print(f"Checking pixel at ({check_y}, {check_x}): {before_pixel}")
+                            else:
+                                before_pixel = None
+                                print(f"Pixel check coordinates out of bounds: ({check_y}, {check_x})")
                             for k in range(len(inpaint_area)):
                                 if comp_idx < len(comps[k]):  # 确保索引有效
                                     # 将修复的图像重新扩展到原始分辨率，并融合到原始帧
@@ -395,12 +419,15 @@ class STTNAutoInpaint:
                                         print(f"Applying inpaint to area: {inpaint_area[k]}, mask_area sum: {mask_area.sum()}")
                                         frame[inpaint_area[k][0]:inpaint_area[k][1], :, :] = mask_area * comp + (1 - mask_area) * frame[inpaint_area[k][0]:inpaint_area[k][1], :, :]
                             # 检查修复后的像素值
-                            after_pixel = frame[650, 300]
-                            # 只有像素值发生变化时才报告
-                            if not np.array_equal(before_pixel, after_pixel):
-                                print(f"Applied inpainting to frame {absolute_frame_number} - Pixel changed from {before_pixel} to {after_pixel}")
+                            if before_pixel is not None and check_y < frame.shape[0] and check_x < frame.shape[1]:
+                                after_pixel = frame[check_y, check_x]
+                                # 只有像素值发生变化时才报告
+                                if not np.array_equal(before_pixel, after_pixel):
+                                    print(f"Applied inpainting to frame {absolute_frame_number} - Pixel changed from {before_pixel} to {after_pixel}")
+                                else:
+                                    print(f"Applied inpainting to frame {absolute_frame_number} - No visible change")
                             else:
-                                print(f"Applied inpainting to frame {absolute_frame_number} - No visible change")
+                                print(f"Applied inpainting to frame {absolute_frame_number} - Checked")
                         else:
                             print(f"Skipped frame {absolute_frame_number}")
                 
@@ -408,6 +435,9 @@ class STTNAutoInpaint:
                 writer.write(frame)
                 if standalone_writer != writer:
                     standalone_writer.write(frame)
+                    print(f"Wrote frame {absolute_frame_number} to standalone writer")
+                else:
+                    print(f"Wrote frame {absolute_frame_number} to writer")
                 
                 if input_sub_remover is not None:
                     if tbar is not None:

@@ -30,9 +30,11 @@ def batch_generator(data, max_batch_size):
 
 def create_mask(size, coords_list):
     mask = np.zeros(size, dtype="uint8")
+    print(f"Creating mask with size: {size}")
     if coords_list:
         for coords in coords_list:
             xmin, xmax, ymin, ymax = coords
+            print(f"Coords: xmin={xmin}, xmax={xmax}, ymin={ymin}, ymax={ymax}")
             # 为了避免框过小，放大10个像素
             x1 = xmin - config.subtitleAreaDeviationPixel.value
             if x1 < 0:
@@ -42,8 +44,10 @@ def create_mask(size, coords_list):
                 y1 = 0
             x2 = xmax + config.subtitleAreaDeviationPixel.value
             y2 = ymax + config.subtitleAreaDeviationPixel.value
+            print(f"Adjusted coords: x1={x1}, y1={y1}, x2={x2}, y2={y2}")
             cv2.rectangle(mask, (x1, y1),
                           (x2, y2), (255, 255, 255), thickness=-1)
+    print(f"Mask sum: {mask.sum()}")
     return mask
 
 def get_inpaint_area_by_mask(W, H, h, mask, multiple=1):
