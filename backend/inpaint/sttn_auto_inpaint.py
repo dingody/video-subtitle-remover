@@ -229,6 +229,8 @@ class STTNAutoInpaint:
         try:
             # 读取视频帧信息
             reader, frame_info = self.read_frame_info_from_video()
+            print(f"Video info: FPS={frame_info['fps']}, Total frames={frame_info['len']}, "
+                  f"Actual frames={frame_info.get('actual_len', frame_info['len'])}")  # 添加日志
             if input_sub_remover is not None:
                 ab_sections = input_sub_remover.ab_sections
                 
@@ -242,6 +244,7 @@ class STTNAutoInpaint:
             total_frames = frame_info.get('actual_len', frame_info['len'])
             start_frame = frame_info.get('start_frame', 0)
             end_frame = frame_info.get('end_frame', frame_info['len'])
+            print(f"Processing frames from {start_frame} to {end_frame}, total: {total_frames}")  # 添加日志
             
             # 计算需要迭代修复视频的次数
             rec_time = total_frames // self.clip_gap if total_frames % self.clip_gap == 0 else total_frames // self.clip_gap + 1
@@ -348,6 +351,7 @@ class STTNAutoInpaint:
                     
                     # 应用修复结果
                     for j in range(valid_frames_count):
+                        absolute_frame_number = j + start_f + start_frame  # 计算绝对帧号
                         if input_sub_remover is not None and input_sub_remover.gui_mode:
                             original_frame = copy.deepcopy(frames_hr[j])
                         else:
@@ -364,10 +368,12 @@ class STTNAutoInpaint:
                                     comp = cv2.resize(comps[k][comp_idx], (frame_info['W_ori'], split_h))
                                     comp = cv2.cvtColor(np.array(comp).astype(np.uint8), cv2.COLOR_BGR2RGB)
                                     mask_area = mask[inpaint_area[k][0]:inpaint_area[k][1], :]
+                                    print(f"Before inpainting - Pixel values at (650, 300): {frame[650, 300]}")  # 添加日志
                                     frame[inpaint_area[k][0]:inpaint_area[k][1], :, :] = mask_area * comp + (1 - mask_area) * frame[inpaint_area[k][0]:inpaint_area[k][1], :, :]
-                            print(f"Applied inpainting to frame {j + start_frame}")  # 添加日志
+                                    print(f"After inpainting - Pixel values at (650, 300): {frame[650, 300]}")  # 添加日志
+                            print(f"Applied inpainting to frame {absolute_frame_number}")  # 添加日志
                         else:
-                            print(f"Skipped inpainting for frame {j + start_frame}")  # 添加日志
+                            print(f"Skipped inpainting for frame {absolute_frame_number}")  # 添加日志
                         
                         writer.write(frame)
                         

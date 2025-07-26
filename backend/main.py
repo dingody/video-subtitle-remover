@@ -268,10 +268,12 @@ class SubtitleRemover:
         """
         self.append_output(tr['Main']['ProcessingStartRemovingSubtitles'])
         self.append_output(f"Processing time range: {self.start_time}s to {self.end_time}s")
+        self.append_output(f"Subtitle areas: {self.sub_areas}")
         mask_area_coordinates = []
         for sub_area in self.sub_areas:
             ymin, ymax, xmin, xmax = sub_area
             mask_area_coordinates.append((xmin, xmax, ymin, ymax))
+        self.append_output(f"Mask area coordinates: {mask_area_coordinates}")
         mask = create_mask(self.mask_size, mask_area_coordinates)
         sttn_video_inpaint = STTNAutoInpaint(
             self.hardware_accelerator.device, 
