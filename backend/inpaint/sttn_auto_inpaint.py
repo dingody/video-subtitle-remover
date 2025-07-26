@@ -189,6 +189,7 @@ class STTNAutoInpaint:
             reader.set(cv2.CAP_PROP_POS_MSEC, self.start_time * 1000)
         
         # 获取视频的宽度, 高度, 帧率和帧数信息并存储在frame_info字典中
+        # 注意：CAP_PROP_FRAME_WIDTH是宽度，CAP_PROP_FRAME_HEIGHT是高度
         frame_info = {
             'W_ori': int(reader.get(cv2.CAP_PROP_FRAME_WIDTH) + 0.5),  # 视频的原始宽度
             'H_ori': int(reader.get(cv2.CAP_PROP_FRAME_HEIGHT) + 0.5),  # 视频的原始高度
@@ -203,6 +204,10 @@ class STTNAutoInpaint:
         frame_info['actual_len'] = actual_frame_count
         frame_info['start_frame'] = start_frame
         frame_info['end_frame'] = end_frame
+        
+        print(f"Frame info: {frame_info}")
+        # 验证尺寸
+        print(f"Verified frame dimensions - Width: {frame_info['W_ori']}, Height: {frame_info['H_ori']}")
         
         # 返回视频读取对象、帧信息和视频写入对象
         return reader, frame_info
@@ -249,14 +254,22 @@ class STTNAutoInpaint:
                 # 使用input_sub_remover的writer来写入处理过的帧
                 writer = input_sub_remover.video_writer
                 # 在STTN-AUTO模式下创建一个新的writer用于输出只包含处理片段的视频
+                # 注意：尺寸参数是(宽度, 高度)
                 standalone_writer = cv2.VideoWriter(self.video_out_path, cv2.VideoWriter_fourcc(*"mp4v"), frame_info['fps'], (frame_info['W_ori'], frame_info['H_ori']))
                 print(f"Created standalone writer: {self.video_out_path}")
+                # 验证writer是否成功创建
+                if not standalone_writer.isOpened():
+                    print("Error: Failed to create standalone video writer!")
             else:
                 ab_sections = None
                 # 创建视频写入对象，用于输出修复后的视频
+                # 注意：尺寸参数是(宽度, 高度)
                 writer = cv2.VideoWriter(self.video_out_path, cv2.VideoWriter_fourcc(*"mp4v"), frame_info['fps'], (frame_info['W_ori'], frame_info['H_ori']))
                 standalone_writer = writer
                 print(f"Created writer: {self.video_out_path}")
+                # 验证writer是否成功创建
+                if not writer.isOpened():
+                    print("Error: Failed to create video writer!")
             
             # 使用实际帧数而不是总帧数
             total_frames = frame_info.get('actual_len', frame_info['len'])
@@ -433,8 +446,12 @@ class STTNAutoInpaint:
                 
                 # 写入帧到两个writer（如果它们不同的话）
                 result1 = writer.write(frame)
+                if not result1:
+                    print(f"Error: Failed to write frame {absolute_frame_number} to main writer")
                 if standalone_writer != writer:
                     result2 = standalone_writer.write(frame)
+                    if not result2:
+                        print(f"Error: Failed to write frame {absolute_frame_number} to standalone writer")
                     print(f"Wrote frame {absolute_frame_number} to standalone writer, success: {result2}")
                 else:
                     print(f"Wrote frame {absolute_frame_number} to writer, success: {result1}")
