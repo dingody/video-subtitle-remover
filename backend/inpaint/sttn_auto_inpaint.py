@@ -2,6 +2,7 @@ import os
 import copy
 import time
 import sys
+import logging
 from typing import List
 
 import cv2
