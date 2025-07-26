@@ -48,40 +48,59 @@ class SubtitleDetect:
             img = np.array(img)
         print(f"Detecting subtitles in frame with shape {img.shape}")
         
+        # 确保图像在正确的设备上并具有正确的格式
+        if img.dtype != np.uint8:
+            img = img.astype(np.uint8)
+        
         # 添加超时机制，防止OCR检测卡住
         import signal
+        import threading
+        import time
         
-        def timeout_handler(signum, frame):
-            raise TimeoutError("OCR detection timed out")
+        result = [None]  # 用于存储OCR结果的容器
         
-        # 设置5秒超时
-        signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(5)
+        def ocr_worker():
+            try:
+                dt_boxes, elapse = self.text_detector(img)
+                result[0] = (dt_boxes, elapse)
+            except Exception as e:
+                print(f"OCR detection error: {str(e)}")
+                result[0] = (None, 0)
         
-        try:
-            dt_boxes, elapse = self.text_detector(img)
-            print(f"OCR detection completed in {elapse} seconds")
-            coordinate_list = get_coordinates(dt_boxes.tolist())
-            if coordinate_list:
-                for coordinate in coordinate_list:
-                    xmin, xmax, ymin, ymax = coordinate
-                    if self.sub_areas is not None and len(self.sub_areas) > 0:
-                        for sub_area in self.sub_areas:
-                            s_ymin, s_ymax, s_xmin, s_xmax = sub_area
-                            if (s_xmin <= xmin and xmax <= s_xmax
-                                    and s_ymin <= ymin
-                                    and ymax <= s_ymax):
-                                temp_list.append((xmin, xmax, ymin, ymax))
-                    else:
-                        temp_list.append((xmin, xmax, ymin, ymax))
-            print(f"Found {len(temp_list)} text regions")
-            return temp_list
-        except TimeoutError:
-            print("OCR detection timed out, assuming no text")
+        # 在单独的线程中运行OCR检测
+        thread = threading.Thread(target=ocr_worker)
+        thread.daemon = True
+        thread.start()
+        
+        # 等待最多5秒
+        thread.join(timeout=5.0)
+        
+        if thread.is_alive():
+            print("OCR detection timed out")
             return []
-        finally:
-            # 取消超时
-            signal.alarm(0)
+        
+        if result[0] is None or result[0][0] is None:
+            print("OCR detection failed or returned None")
+            return []
+            
+        dt_boxes, elapse = result[0]
+        print(f"OCR detection completed in {elapse} seconds")
+        coordinate_list = get_coordinates(dt_boxes.tolist())
+        temp_list = []
+        if coordinate_list:
+            for coordinate in coordinate_list:
+                xmin, xmax, ymin, ymax = coordinate
+                if self.sub_areas is not None and len(self.sub_areas) > 0:
+                    for sub_area in self.sub_areas:
+                        s_ymin, s_ymax, s_xmin, s_xmax = sub_area
+                        if (s_xmin <= xmin and xmax <= s_xmax
+                                and s_ymin <= ymin
+                                and ymax <= s_ymax):
+                            temp_list.append((xmin, xmax, ymin, ymax))
+                else:
+                    temp_list.append((xmin, xmax, ymin, ymax))
+        print(f"Found {len(temp_list)} text regions")
+        return temp_list
 
     def find_subtitle_frame_no(self, sub_remover=None):
         video_cap = cv2.VideoCapture(get_readable_path(self.video_path))

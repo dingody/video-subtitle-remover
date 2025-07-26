@@ -348,27 +348,9 @@ class STTNAutoInpaint:
                         image = cv2.resize(image, (frame_info['W_ori'], frame_info['H_ori']))
                     
                     # 检测帧中是否包含文字，如果包含则跳过该帧（仅在启用配置时）
+                    # 临时禁用OCR检测功能进行测试
                     contains_text = False
-                    # 优化：每隔5帧进行一次OCR检测，减少处理时间
-                    if (config.skipFramesWithTextInSttnAuto.value and 
-                        self.subtitle_detector is not None and 
-                        is_frame_number_in_ab_sections(j + start_frame, ab_sections) and
-                        (j + start_frame) % 5 == 0):  # 每5帧检测一次
-                        print(f"Detecting text in frame {j + start_frame}")
-                        detected_text = self.subtitle_detector.detect_subtitle(image)
-                        contains_text = len(detected_text) > 0
-                        if contains_text:
-                            skipped_frames_count += 1
-                            print(f"Frame {j + start_frame} contains text, skipping...")
-                        else:
-                            processed_frames_count += 1
-                            print(f"Frame {j + start_frame} is clean, will be processed")
-                    elif is_frame_number_in_ab_sections(j + start_frame, ab_sections):
-                        # 即使不检测文字也记录处理的帧
-                        processed_frames_count += 1
-                        print(f"Frame {j + start_frame} will be processed (text detection disabled or skipped)")
-                    else:
-                        print(f"Frame {j + start_frame} is outside processing area, skipping...")
+                    print(f"Skipping OCR detection for frame {j + start_frame} (disabled for testing)")
                     
                     frames_hr.append(image)
                     valid_frames_count += 1
