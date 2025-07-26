@@ -109,9 +109,9 @@ class SubtitleDetect:
         thread.start()
         print("[OCR] OCR worker thread started")
         
-        # 等待最多5秒（增加超时时间以便调试）
-        print("[OCR] Waiting for OCR detection result (timeout=5s)")
-        thread.join(timeout=5.0)
+        # 等待最多10秒（增加超时时间以便调试）
+        print("[OCR] Waiting for OCR detection result (timeout=10s)")
+        thread.join(timeout=10.0)
         print("[OCR] OCR detection wait completed")
         
         if thread.is_alive():

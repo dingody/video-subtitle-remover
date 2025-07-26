@@ -32,6 +32,10 @@ def parse_args():
         "--end-time", type=float, default=None,
         help="End time in seconds (default: end of video)"
     )
+    parser.add_argument(
+        "--skip-ocr", action="store_true",
+        help="Skip OCR detection in STTN-AUTO mode for performance testing"
+    )
     args = parser.parse_args()
     args.inpaint_mode = InpaintMode[args.inpaint_mode.replace('-','_').upper()]
     if args.subtitle_area_coords is None:

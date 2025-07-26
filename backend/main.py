@@ -554,6 +554,10 @@ if __name__ == '__main__':
     sr.video_out_path = args.output
     config.inpaintMode.value = args.inpaint_mode
     
+    # 设置是否跳过OCR检测
+    if args.skip_ocr:
+        config.skipFramesWithTextInSttnAuto.value = False
+    
     # 确保硬件加速在命令行模式下被启用
     sr.hardware_accelerator.set_enabled(True)
     

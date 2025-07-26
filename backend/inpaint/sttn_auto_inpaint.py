@@ -482,21 +482,31 @@ class STTNAutoInpaint:
                     for j in range(start_f, end_f):
                         if j - start_f < valid_frames_count and is_frame_number_in_ab_sections(j + start_frame, ab_sections):
                             # 检查该帧是否包含文字（仅在启用配置时）
-                    contains_text = False
-                    if (config.skipFramesWithTextInSttnAuto.value and 
-                        self.subtitle_detector is not None):
-                        # 在命令行模式下也进行OCR检测（因为这是STTN-AUTO模式的核心功能）
-                        if config.skipFramesWithTextInSttnAuto.value:
-                            print(f"Detecting text in frame {j + start_frame}")
-                        detected_text = self.subtitle_detector.detect_subtitle(frames_hr[j - start_f])
-                        contains_text = len(detected_text) > 0
-                        
-                        if contains_text:
-                            if config.skipFramesWithTextInSttnAuto.value:
-                                print(f"Frame {j + start_frame} contains text, will be processed")
-                        else:
-                            if config.skipFramesWithTextInSttnAuto.value:
-                                print(f"Frame {j + start_frame} is clean, skipping...")
+                            contains_text = False
+                            if (config.skipFramesWithTextInSttnAuto.value and 
+                                self.subtitle_detector is not None):
+                                # 在命令行模式下也进行OCR检测（因为这是STTN-AUTO模式的核心功能）
+                                if config.skipFramesWithTextInSttnAuto.value:
+                                    print(f"Detecting text in frame {j + start_frame}")
+                                detected_text = self.subtitle_detector.detect_subtitle(frames_hr[j - start_f])
+                                contains_text = len(detected_text) > 0
+                                
+                                if contains_text:
+                                    if config.skipFramesWithTextInSttnAuto.value:
+                                        print(f"Frame {j + start_frame} contains text, will be processed")
+                                else:
+                                    if config.skipFramesWithTextInSttnAuto.value:
+                                        print(f"Frame {j + start_frame} is clean, skipping...")
+                            elif not config.skipFramesWithTextInSttnAuto.value:
+                                # 如果跳过OCR检测，则默认所有帧都包含文字（需要处理）
+                                contains_text = True
+                                if config.skipFramesWithTextInSttnAuto.value:
+                                    print(f"Frame {j + start_frame} assumed to contain text (OCR skipped)")
+                            
+                            # 只有包含文字的帧才被标记为需要处理（注意：包含文字的帧需要进行inpaint处理）
+                            if contains_text:
+                                processed_frames_map[j - start_f] = processed_idx
+                                processed_idx += 1
                             
                             # 只有包含文字的帧才被标记为需要处理（注意：包含文字的帧需要进行inpaint处理）
                             if contains_text:
@@ -542,10 +552,10 @@ class STTNAutoInpaint:
                                     # 注意：inpaint_area的格式是(ymin, ymax, xmin, xmax)
                                     mask_area = mask[inpaint_area[k][0]:inpaint_area[k][1], inpaint_area[k][2]:inpaint_area[k][3]]  # 正确使用y和x坐标
                                     # 检查是否应该应用修复
-                            if mask_area.sum() > 0:  # 只有掩码非空时才应用修复
-                                if config.skipFramesWithTextInSttnAuto.value and j % 10 == 0:
-                                    print(f"Applying inpaint to area: {inpaint_area[k]}, mask_area sum: {mask_area.sum()}")
-                                frame[inpaint_area[k][0]:inpaint_area[k][1], inpaint_area[k][2]:inpaint_area[k][3], :] = mask_area * comp + (1 - mask_area) * frame[inpaint_area[k][0]:inpaint_area[k][1], inpaint_area[k][2]:inpaint_area[k][3], :]
+                                    if mask_area.sum() > 0:  # 只有掩码非空时才应用修复
+                                        if config.skipFramesWithTextInSttnAuto.value and j % 10 == 0:
+                                            print(f"Applying inpaint to area: {inpaint_area[k]}, mask_area sum: {mask_area.sum()}")
+                                        frame[inpaint_area[k][0]:inpaint_area[k][1], inpaint_area[k][2]:inpaint_area[k][3], :] = mask_area * comp + (1 - mask_area) * frame[inpaint_area[k][0]:inpaint_area[k][1], inpaint_area[k][2]:inpaint_area[k][3], :]
                             # 检查修复后的像素值
                             if before_pixel is not None and check_y < frame.shape[0] and check_x < frame.shape[1]:
                                 after_pixel = frame[check_y, check_x]
