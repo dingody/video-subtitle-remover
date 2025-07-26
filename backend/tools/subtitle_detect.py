@@ -47,24 +47,41 @@ class SubtitleDetect:
         if not isinstance(img, np.ndarray):
             img = np.array(img)
         print(f"Detecting subtitles in frame with shape {img.shape}")
-        temp_list = []
-        dt_boxes, elapse = self.text_detector(img)
-        print(f"OCR detection completed in {elapse} seconds")
-        coordinate_list = get_coordinates(dt_boxes.tolist())
-        if coordinate_list:
-            for coordinate in coordinate_list:
-                xmin, xmax, ymin, ymax = coordinate
-                if self.sub_areas is not None and len(self.sub_areas) > 0:
-                    for sub_area in self.sub_areas:
-                        s_ymin, s_ymax, s_xmin, s_xmax = sub_area
-                        if (s_xmin <= xmin and xmax <= s_xmax
-                                and s_ymin <= ymin
-                                and ymax <= s_ymax):
-                            temp_list.append((xmin, xmax, ymin, ymax))
-                else:
-                    temp_list.append((xmin, xmax, ymin, ymax))
-        print(f"Found {len(temp_list)} text regions")
-        return temp_list
+        
+        # 添加超时机制，防止OCR检测卡住
+        import signal
+        
+        def timeout_handler(signum, frame):
+            raise TimeoutError("OCR detection timed out")
+        
+        # 设置5秒超时
+        signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(5)
+        
+        try:
+            dt_boxes, elapse = self.text_detector(img)
+            print(f"OCR detection completed in {elapse} seconds")
+            coordinate_list = get_coordinates(dt_boxes.tolist())
+            if coordinate_list:
+                for coordinate in coordinate_list:
+                    xmin, xmax, ymin, ymax = coordinate
+                    if self.sub_areas is not None and len(self.sub_areas) > 0:
+                        for sub_area in self.sub_areas:
+                            s_ymin, s_ymax, s_xmin, s_xmax = sub_area
+                            if (s_xmin <= xmin and xmax <= s_xmax
+                                    and s_ymin <= ymin
+                                    and ymax <= s_ymax):
+                                temp_list.append((xmin, xmax, ymin, ymax))
+                    else:
+                        temp_list.append((xmin, xmax, ymin, ymax))
+            print(f"Found {len(temp_list)} text regions")
+            return temp_list
+        except TimeoutError:
+            print("OCR detection timed out, assuming no text")
+            return []
+        finally:
+            # 取消超时
+            signal.alarm(0)
 
     def find_subtitle_frame_no(self, sub_remover=None):
         video_cap = cv2.VideoCapture(get_readable_path(self.video_path))
