@@ -259,7 +259,8 @@ class SubtitleRemover:
                                         self.video_writer.write(inpainted_frame)
                                         # self.append_output(f'write frame: {start_frame_no + inner_index} with mask {sub_list[index]}')
                                         inner_index += 1
-                                        self.update_preview_with_comp(np.clip(batch[i]+mask[:,:,np.newaxis]*0.3,0,255).astype(np.uint8), inpainted_frame)
+                                        if self.gui_mode:
+                                            self.update_preview_with_comp(np.clip(batch[i]+mask[:,:,np.newaxis]*0.3,0,255).astype(np.uint8), inpainted_frame)
                                 self.update_progress(tbar, increment=len(batch))
 
     def sttn_auto_mode(self, tbar):
@@ -365,7 +366,8 @@ class SubtitleRemover:
                             self.video_writer.write(inpainted_frame)
                             # self.append_output(f'write frame: {start_frame_index + inner_index} with mask')
                             inner_index += 1
-                            self.update_preview_with_comp(np.clip(batch[i]+mask[:,:,np.newaxis]*0.3,0,255).astype(np.uint8), inpainted_frame)
+                            if self.gui_mode:
+                                self.update_preview_with_comp(np.clip(batch[i]+mask[:,:,np.newaxis]*0.3,0,255).astype(np.uint8), inpainted_frame)
                     self.update_progress(tbar, increment=len(batch))
 
     def run(self):
@@ -398,7 +400,8 @@ class SubtitleRemover:
             if len(sub_list):
                 mask = create_mask(original_frame.shape[0:2], sub_list)
                 inpainted_frame = self.lama_inpaint.inpaint(original_frame, mask)
-                self.update_preview_with_comp(np.clip(original_frame+mask[:,:,np.newaxis]*0.3,0,255).astype(np.uint8), inpainted_frame)
+                if self.gui_mode:
+                    self.update_preview_with_comp(np.clip(original_frame+mask[:,:,np.newaxis]*0.3,0,255).astype(np.uint8), inpainted_frame)
             else:
                 inpainted_frame = original_frame
                 self.update_preview_with_comp(original_frame, inpainted_frame)
