@@ -52,6 +52,8 @@ class STTNInpaint:
         # 确定去字幕的垂直高度部分
         split_h = int(W_ori * 3 / 16)
         inpaint_area = get_inpaint_area_by_mask(W_ori, H_ori, split_h, mask)
+        # 打印修复区域信息以便调试
+        print(f"Inpaint areas: {inpaint_area}")
         # 初始化帧存储变量
         # 高分辨率帧存储列表
         frames_hr = copy.deepcopy(input_frames)
@@ -223,17 +225,14 @@ class STTNAutoInpaint:
         self.end_time = end_time
 
     def __call__(self, input_mask=None, input_sub_remover=None, tbar=None):
-        print(f"STTNAutoInpaint started with time range: {self.start_time}s to {self.end_time}s")  # 添加日志
+        print(f"STTNAutoInpaint: {self.start_time}s to {self.end_time}s")  # 简化日志
         reader = None
         writer = None
         try:
             # 读取视频帧信息
             reader, frame_info = self.read_frame_info_from_video()
-            print(f"Video info: FPS={frame_info['fps']}, Total frames={frame_info['len']}, "
-                  f"Actual frames={frame_info.get('actual_len', frame_info['len'])}")  # 添加日志
             if input_sub_remover is not None:
                 ab_sections = input_sub_remover.ab_sections
-                
                 writer = input_sub_remover.video_writer
             else:
                 ab_sections = None
@@ -244,7 +243,6 @@ class STTNAutoInpaint:
             total_frames = frame_info.get('actual_len', frame_info['len'])
             start_frame = frame_info.get('start_frame', 0)
             end_frame = frame_info.get('end_frame', frame_info['len'])
-            print(f"Processing frames from {start_frame} to {end_frame}, total: {total_frames}")  # 添加日志
             
             # 计算需要迭代修复视频的次数
             rec_time = total_frames // self.clip_gap if total_frames % self.clip_gap == 0 else total_frames // self.clip_gap + 1
@@ -264,7 +262,7 @@ class STTNAutoInpaint:
             for i in range(rec_time):
                 start_f = i * self.clip_gap  # 起始帧位置
                 end_f = min((i + 1) * self.clip_gap, total_frames)  # 结束帧位置
-                tqdm.write(f'Processing: {start_f + 1} - {end_f} / Total: {total_frames}')
+                print(f'Processing segment: {start_f + 1} - {end_f} / {total_frames}')
                 
                 frames_hr = []  # 高分辨率帧列表
                 frames = {}  # 帧字典，用于存储裁剪后的图像
@@ -276,12 +274,12 @@ class STTNAutoInpaint:
                     
                 # 读取和修复高分辨率帧
                 valid_frames_count = 0
-                processed_frames_count = 0  # 新增：记录实际处理的帧数
-                skipped_frames_count = 0    # 新增：记录跳过的帧数
+                processed_frames_count = 0  # 记录实际处理的帧数
+                skipped_frames_count = 0    # 记录跳过的帧数
                 for j in range(start_f, end_f):
                     success, image = reader.read()
                     if not success:
-                        print(f"Warning: Failed to read frame {j}.")
+                        print(f"Failed to read frame {j}.")
                         break
                     
                     # 检测帧中是否包含文字，如果包含则跳过该帧（仅在启用配置时）
@@ -292,10 +290,8 @@ class STTNAutoInpaint:
                         detected_text = self.subtitle_detector.detect_subtitle(image)
                         contains_text = len(detected_text) > 0
                         if contains_text:
-                            print(f"Frame {j + start_frame} contains text, skipping...")  # 添加日志
                             skipped_frames_count += 1
                         else:
-                            print(f"Frame {j + start_frame} is clean, will be processed")  # 添加日志
                             processed_frames_count += 1
                     elif is_frame_number_in_ab_sections(j + start_frame, ab_sections):
                         # 即使不检测文字也记录处理的帧
@@ -308,16 +304,22 @@ class STTNAutoInpaint:
                     if is_frame_number_in_ab_sections(j + start_frame, ab_sections) and not contains_text:
                         for k in range(len(inpaint_area)):
                             # 裁剪、缩放并添加到帧字典
-                            image_crop = image[inpaint_area[k][0]:inpaint_area[k][1], :, :]
+                            # 注意：inpaint_area的格式是(ymin, ymax, xmin, xmax)
+                            image_crop = image[inpaint_area[k][0]:inpaint_area[k][1], :, :]  # 正确使用y坐标
                             image_resize = cv2.resize(image_crop, (self.sttn_inpaint.model_input_width, self.sttn_inpaint.model_input_height))
                             frames[k].append(image_resize)
                 
-                print(f"Segment stats - Total frames: {valid_frames_count}, Processed frames: {processed_frames_count}, Skipped frames: {skipped_frames_count}")  # 添加日志
-                
                 # 如果没有读取到有效帧，则跳过当前迭代
                 if valid_frames_count == 0:
-                    print(f"Warning: No valid frames found in range {start_f+1}-{end_f}. Skipping this segment.")
+                    print(f"Skipped segment {start_f+1}-{end_f}")
                     continue
+                    
+                # 对每个修复区域运行修复
+                for k in range(len(inpaint_area)):
+                    if len(frames[k]) > 0:  # 确保有帧可以处理
+                        comps[k] = self.sttn_inpaint.inpaint(frames[k])
+                    else:
+                        comps[k] = []
                     
                 # 对每个修复区域运行修复
                 for k in range(len(inpaint_area)):
@@ -347,8 +349,6 @@ class STTNAutoInpaint:
                                 processed_frames_map[j - start_f] = processed_idx
                                 processed_idx += 1
                     
-                    print(f"Processed frames map: {processed_frames_map}")  # 添加日志
-                    
                     # 应用修复结果
                     for j in range(valid_frames_count):
                         absolute_frame_number = j + start_f + start_frame  # 计算绝对帧号
@@ -367,13 +367,14 @@ class STTNAutoInpaint:
                                     # 将修复的图像重新扩展到原始分辨率，并融合到原始帧
                                     comp = cv2.resize(comps[k][comp_idx], (frame_info['W_ori'], split_h))
                                     comp = cv2.cvtColor(np.array(comp).astype(np.uint8), cv2.COLOR_BGR2RGB)
-                                    mask_area = mask[inpaint_area[k][0]:inpaint_area[k][1], :]
-                                    print(f"Before inpainting - Pixel values at (650, 300): {frame[650, 300]}")  # 添加日志
-                                    frame[inpaint_area[k][0]:inpaint_area[k][1], :, :] = mask_area * comp + (1 - mask_area) * frame[inpaint_area[k][0]:inpaint_area[k][1], :, :]
-                                    print(f"After inpainting - Pixel values at (650, 300): {frame[650, 300]}")  # 添加日志
-                            print(f"Applied inpainting to frame {absolute_frame_number}")  # 添加日志
+                                    # 注意：inpaint_area的格式是(ymin, ymax, xmin, xmax)
+                                    mask_area = mask[inpaint_area[k][0]:inpaint_area[k][1], :]  # 正确使用y坐标
+                                    # 检查是否应该应用修复
+                                    if mask_area.sum() > 0:  # 只有掩码非空时才应用修复
+                                        frame[inpaint_area[k][0]:inpaint_area[k][1], :, :] = mask_area * comp + (1 - mask_area) * frame[inpaint_area[k][0]:inpaint_area[k][1], :, :]
+                            print(f"Applied inpainting to frame {absolute_frame_number}")
                         else:
-                            print(f"Skipped inpainting for frame {absolute_frame_number}")  # 添加日志
+                            print(f"Skipped frame {absolute_frame_number}")
                         
                         writer.write(frame)
                         
