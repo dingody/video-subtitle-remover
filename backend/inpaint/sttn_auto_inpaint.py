@@ -337,11 +337,14 @@ class STTNAutoInpaint:
                 valid_frames_count = 0
                 processed_frames_count = 0  # 记录实际处理的帧数
                 skipped_frames_count = 0    # 记录跳过的帧数
-                print(f"Reading {end_f - start_f} frames from video")
+                # 只在需要时打印详细信息
+                if config.skipFramesWithTextInSttnAuto.value:
+                    print(f"Reading {end_f - start_f} frames from video")
                 for j in range(start_f, end_f):
                     success, image = reader.read()
                     if not success:
-                        print(f"Failed to read frame {j}.")
+                        if config.skipFramesWithTextInSttnAuto.value:
+                            print(f"Failed to read frame {j}.")
                         break
                     
                     # 确保image是numpy数组
@@ -353,20 +356,24 @@ class STTNAutoInpaint:
                     if (config.skipFramesWithTextInSttnAuto.value and 
                         self.subtitle_detector is not None and 
                         is_frame_number_in_ab_sections(j + start_frame, ab_sections)):
-                        print(f"Detecting text in frame {j + start_frame}")
+                        if config.skipFramesWithTextInSttnAuto.value:
+                            print(f"Detecting text in frame {j + start_frame}")
                         detected_text = self.subtitle_detector.detect_subtitle(image)
                         contains_text = len(detected_text) > 0
                         if contains_text:
                             skipped_frames_count += 1
-                            print(f"Frame {j + start_frame} contains text, skipping...")
+                            if config.skipFramesWithTextInSttnAuto.value:
+                                print(f"Frame {j + start_frame} contains text, skipping...")
                         else:
                             processed_frames_count += 1
-                            print(f"Frame {j + start_frame} is clean, will be processed")
+                            if config.skipFramesWithTextInSttnAuto.value:
+                                print(f"Frame {j + start_frame} is clean, will be processed")
                     elif is_frame_number_in_ab_sections(j + start_frame, ab_sections):
                         # 即使不检测文字也记录处理的帧
                         processed_frames_count += 1
-                        print(f"Frame {j + start_frame} will be processed (text detection disabled or skipped)")
-                    else:
+                        if config.skipFramesWithTextInSttnAuto.value:
+                            print(f"Frame {j + start_frame} will be processed (text detection disabled or skipped)")
+                    elif config.skipFramesWithTextInSttnAuto.value:
                         print(f"Frame {j + start_frame} is outside processing area, skipping...")
                     
                     frames_hr.append(image)
@@ -378,7 +385,9 @@ class STTNAutoInpaint:
                             # 裁剪、缩放并添加到帧字典
                             # 注意：inpaint_area的格式是(ymin, ymax, xmin, xmax)
                             image_crop = image[inpaint_area[k][0]:inpaint_area[k][1], :, :]  # 正确使用y坐标
-                            print(f"Frame {j + start_frame}: Cropped region shape: {image_crop.shape}")
+                            # 减少打印频率
+                            if config.skipFramesWithTextInSttnAuto.value and j % 10 == 0:
+                                print(f"Frame {j + start_frame}: Cropped region shape: {image_crop.shape}")
                             image_resize = cv2.resize(image_crop, (self.sttn_inpaint.model_input_width, self.sttn_inpaint.model_input_height))
                             frames[k].append(image_resize)
                 
@@ -392,12 +401,16 @@ class STTNAutoInpaint:
                 # 对每个修复区域运行修复
                 for k in range(len(inpaint_area)):
                     if len(frames[k]) > 0:  # 确保有帧可以处理
-                        print(f"Running inpaint for area {k} with {len(frames[k])} frames")
+                        # 减少打印频率
+                        if config.skipFramesWithTextInSttnAuto.value:
+                            print(f"Running inpaint for area {k} with {len(frames[k])} frames")
                         comps[k] = self.sttn_inpaint.inpaint(frames[k])
-                        print(f"Completed processing area {k}")
+                        if config.skipFramesWithTextInSttnAuto.value:
+                            print(f"Completed processing area {k}")
                     else:
                         comps[k] = []
-                        print(f"Skipping area {k} - no frames to process")
+                        if config.skipFramesWithTextInSttnAuto.value:
+                            print(f"Skipping area {k} - no frames to process")
                 
                 # 如果有要修复的区域
                 if inpaint_area and valid_frames_count > 0:
@@ -406,7 +419,8 @@ class STTNAutoInpaint:
                     processed_idx = 0
                     
                     # 构建映射关系
-                    print(f"Building frame mapping for {valid_frames_count} frames")
+                    if config.skipFramesWithTextInSttnAuto.value:
+                        print(f"Building frame mapping for {valid_frames_count} frames")
                     for j in range(start_f, end_f):
                         if j - start_f < valid_frames_count and is_frame_number_in_ab_sections(j + start_frame, ab_sections):
                             # 检查该帧是否包含文字（仅在启用配置时）
@@ -421,10 +435,12 @@ class STTNAutoInpaint:
                                 processed_frames_map[j - start_f] = processed_idx
                                 processed_idx += 1
                     
-                    print(f"Processed frames map: {processed_frames_map}")
+                    if config.skipFramesWithTextInSttnAuto.value:
+                        print(f"Processed frames map: {processed_frames_map}")
                     
                     # 应用修复结果
-                    print(f"Applying results to {valid_frames_count} frames")
+                    if config.skipFramesWithTextInSttnAuto.value:
+                        print(f"Applying results to {valid_frames_count} frames")
                     for j in range(valid_frames_count):
                         absolute_frame_number = j + start_f + start_frame  # 计算绝对帧号
                         if input_sub_remover is not None and input_sub_remover.gui_mode:
@@ -443,10 +459,13 @@ class STTNAutoInpaint:
                             check_x = (inpaint_area[k][2] + inpaint_area[k][3]) // 2  # 修复区域的中心点
                             if check_y < frame.shape[0] and check_x < frame.shape[1]:
                                 before_pixel = frame[check_y, check_x].copy()  # 保存修复前的像素值
-                                print(f"Checking pixel at ({check_y}, {check_x}): {before_pixel}")
+                                # 只在需要时打印
+                                if config.skipFramesWithTextInSttnAuto.value and j % 10 == 0:
+                                    print(f"Checking pixel at ({check_y}, {check_x}): {before_pixel}")
                             else:
                                 before_pixel = None
-                                print(f"Pixel check coordinates out of bounds: ({check_y}, {check_x})")
+                                if config.skipFramesWithTextInSttnAuto.value:
+                                    print(f"Pixel check coordinates out of bounds: ({check_y}, {check_x})")
                             for k in range(len(inpaint_area)):
                                 if comp_idx < len(comps[k]):  # 确保索引有效
                                     # 将修复的图像重新扩展到原始分辨率，并融合到原始帧
@@ -455,39 +474,44 @@ class STTNAutoInpaint:
                                     # 注意：inpaint_area的格式是(ymin, ymax, xmin, xmax)
                                     mask_area = mask[inpaint_area[k][0]:inpaint_area[k][1], inpaint_area[k][2]:inpaint_area[k][3]]  # 正确使用y和x坐标
                                     # 检查是否应该应用修复
-                                    if mask_area.sum() > 0:  # 只有掩码非空时才应用修复
-                                        print(f"Applying inpaint to area: {inpaint_area[k]}, mask_area sum: {mask_area.sum()}")
-                                        frame[inpaint_area[k][0]:inpaint_area[k][1], inpaint_area[k][2]:inpaint_area[k][3], :] = mask_area * comp + (1 - mask_area) * frame[inpaint_area[k][0]:inpaint_area[k][1], inpaint_area[k][2]:inpaint_area[k][3], :]
+                            if mask_area.sum() > 0:  # 只有掩码非空时才应用修复
+                                if config.skipFramesWithTextInSttnAuto.value and j % 10 == 0:
+                                    print(f"Applying inpaint to area: {inpaint_area[k]}, mask_area sum: {mask_area.sum()}")
+                                frame[inpaint_area[k][0]:inpaint_area[k][1], inpaint_area[k][2]:inpaint_area[k][3], :] = mask_area * comp + (1 - mask_area) * frame[inpaint_area[k][0]:inpaint_area[k][1], inpaint_area[k][2]:inpaint_area[k][3], :]
                             # 检查修复后的像素值
                             if before_pixel is not None and check_y < frame.shape[0] and check_x < frame.shape[1]:
                                 after_pixel = frame[check_y, check_x]
                                 # 只有像素值发生变化时才报告
                                 if not np.array_equal(before_pixel, after_pixel):
-                                    print(f"Applied inpainting to frame {absolute_frame_number} - Pixel changed from {before_pixel} to {after_pixel}")
-                                else:
+                                    if config.skipFramesWithTextInSttnAuto.value and j % 10 == 0:
+                                        print(f"Applied inpainting to frame {absolute_frame_number} - Pixel changed from {before_pixel} to {after_pixel}")
+                                elif config.skipFramesWithTextInSttnAuto.value and j % 50 == 0:
                                     print(f"Applied inpainting to frame {absolute_frame_number} - No visible change")
-                            else:
+                            elif config.skipFramesWithTextInSttnAuto.value and j % 50 == 0:
                                 print(f"Applied inpainting to frame {absolute_frame_number} - Checked")
-                        else:
+                        elif config.skipFramesWithTextInSttnAuto.value and j % 50 == 0:
                             print(f"Skipped frame {absolute_frame_number}")
                 
                 # 写入帧到两个writer（如果它们不同的话）
                 # 检查帧尺寸
                 expected_shape = (frame_info['H_ori'], frame_info['W_ori'], 3)
-                print(f"Frame shape: {frame.shape}, Expected: {expected_shape}")
+                if config.skipFramesWithTextInSttnAuto.value and frame.shape != expected_shape:
+                    print(f"Frame shape: {frame.shape}, Expected: {expected_shape}")
                 if frame.shape != expected_shape:
-                    print(f"Frame dimensions mismatch! Resizing frame to {frame_info['H_ori']}x{frame_info['W_ori']}")
+                    if config.skipFramesWithTextInSttnAuto.value:
+                        print(f"Frame dimensions mismatch! Resizing frame to {frame_info['H_ori']}x{frame_info['W_ori']}")
                     frame = cv2.resize(frame, (frame_info['W_ori'], frame_info['H_ori']))
                 
                 result1 = writer.write(frame)
-                if not result1:
+                if not result1 and config.skipFramesWithTextInSttnAuto.value:
                     print(f"Error: Failed to write frame {absolute_frame_number} to main writer")
                 if standalone_writer != writer:
                     result2 = standalone_writer.write(frame)
-                    if not result2:
+                    if not result2 and config.skipFramesWithTextInSttnAuto.value:
                         print(f"Error: Failed to write frame {absolute_frame_number} to standalone writer")
-                    print(f"Wrote frame {absolute_frame_number} to standalone writer, success: {result2}")
-                else:
+                    if config.skipFramesWithTextInSttnAuto.value:
+                        print(f"Wrote frame {absolute_frame_number} to standalone writer, success: {result2}")
+                elif config.skipFramesWithTextInSttnAuto.value:
                     print(f"Wrote frame {absolute_frame_number} to writer, success: {result1}")
                 
                 if input_sub_remover is not None:
