@@ -213,8 +213,11 @@ class STTNAutoInpaint:
         # 视频和掩码路径
         self.video_path = video_path
         self.mask_path = mask_path
-        # 设置输出视频文件的路径
+        # 设置输出视频文件的路径，只包含处理的片段
         self.video_out_path = os.path.join(
+            os.path.dirname(os.path.abspath(self.video_path)),
+            f"{os.path.basename(self.video_path).rsplit('.', 1)[0]}_no_sub_{int(start_time)}s_{int(end_time)}s.mp4"
+        ) if end_time is not None else os.path.join(
             os.path.dirname(os.path.abspath(self.video_path)),
             f"{os.path.basename(self.video_path).rsplit('.', 1)[0]}_no_sub.mp4"
         )
@@ -242,11 +245,15 @@ class STTNAutoInpaint:
             reader, frame_info = self.read_frame_info_from_video()
             if input_sub_remover is not None:
                 ab_sections = input_sub_remover.ab_sections
+                # 使用input_sub_remover的writer来写入处理过的帧
                 writer = input_sub_remover.video_writer
+                # 在STTN-AUTO模式下创建一个新的writer用于输出只包含处理片段的视频
+                standalone_writer = cv2.VideoWriter(self.video_out_path, cv2.VideoWriter_fourcc(*"mp4v"), frame_info['fps'], (frame_info['W_ori'], frame_info['H_ori']))
             else:
                 ab_sections = None
                 # 创建视频写入对象，用于输出修复后的视频
                 writer = cv2.VideoWriter(self.video_out_path, cv2.VideoWriter_fourcc(*"mp4v"), frame_info['fps'], (frame_info['W_ori'], frame_info['H_ori']))
+                standalone_writer = writer
             
             # 使用实际帧数而不是总帧数
             total_frames = frame_info.get('actual_len', frame_info['len'])
@@ -372,33 +379,35 @@ class STTNAutoInpaint:
                         frame = frames_hr[j]
                         
                         # 只有被处理过的帧才应用修复结果
-                if j in processed_frames_map:
-                    comp_idx = processed_frames_map[j]
-                    # 在应用修复前检查特定像素
-                    before_pixel = frame[650, 300].copy()  # 保存修复前的像素值
-                    for k in range(len(inpaint_area)):
-                        if comp_idx < len(comps[k]):  # 确保索引有效
-                            # 将修复的图像重新扩展到原始分辨率，并融合到原始帧
-                            comp = cv2.resize(comps[k][comp_idx], (frame_info['W_ori'], split_h))
-                            comp = cv2.cvtColor(np.array(comp).astype(np.uint8), cv2.COLOR_BGR2RGB)
-                            # 注意：inpaint_area的格式是(ymin, ymax, xmin, xmax)
-                            mask_area = mask[inpaint_area[k][0]:inpaint_area[k][1], :]  # 正确使用y坐标
-                            # 检查是否应该应用修复
-                            # 检查是否应该应用修复
-                        if mask_area.sum() > 0:  # 只有掩码非空时才应用修复
-                            print(f"Applying inpaint to area: {inpaint_area[k]}, mask_area sum: {mask_area.sum()}")
-                            frame[inpaint_area[k][0]:inpaint_area[k][1], :, :] = mask_area * comp + (1 - mask_area) * frame[inpaint_area[k][0]:inpaint_area[k][1], :, :]
-                    # 检查修复后的像素值
-                    after_pixel = frame[650, 300]
-                    # 只有像素值发生变化时才报告
-                    if not np.array_equal(before_pixel, after_pixel):
-                        print(f"Applied inpainting to frame {absolute_frame_number} - Pixel changed from {before_pixel} to {after_pixel}")
-                    else:
-                        print(f"Applied inpainting to frame {absolute_frame_number} - No visible change")
-                else:
-                    print(f"Skipped frame {absolute_frame_number}")
+                        if j in processed_frames_map:
+                            comp_idx = processed_frames_map[j]
+                            # 在应用修复前检查特定像素
+                            before_pixel = frame[650, 300].copy()  # 保存修复前的像素值
+                            for k in range(len(inpaint_area)):
+                                if comp_idx < len(comps[k]):  # 确保索引有效
+                                    # 将修复的图像重新扩展到原始分辨率，并融合到原始帧
+                                    comp = cv2.resize(comps[k][comp_idx], (frame_info['W_ori'], split_h))
+                                    comp = cv2.cvtColor(np.array(comp).astype(np.uint8), cv2.COLOR_BGR2RGB)
+                                    # 注意：inpaint_area的格式是(ymin, ymax, xmin, xmax)
+                                    mask_area = mask[inpaint_area[k][0]:inpaint_area[k][1], :]  # 正确使用y坐标
+                                    # 检查是否应该应用修复
+                                    if mask_area.sum() > 0:  # 只有掩码非空时才应用修复
+                                        print(f"Applying inpaint to area: {inpaint_area[k]}, mask_area sum: {mask_area.sum()}")
+                                        frame[inpaint_area[k][0]:inpaint_area[k][1], :, :] = mask_area * comp + (1 - mask_area) * frame[inpaint_area[k][0]:inpaint_area[k][1], :, :]
+                            # 检查修复后的像素值
+                            after_pixel = frame[650, 300]
+                            # 只有像素值发生变化时才报告
+                            if not np.array_equal(before_pixel, after_pixel):
+                                print(f"Applied inpainting to frame {absolute_frame_number} - Pixel changed from {before_pixel} to {after_pixel}")
+                            else:
+                                print(f"Applied inpainting to frame {absolute_frame_number} - No visible change")
+                        else:
+                            print(f"Skipped frame {absolute_frame_number}")
                 
+                # 写入帧到两个writer（如果它们不同的话）
                 writer.write(frame)
+                if standalone_writer != writer:
+                    standalone_writer.write(frame)
                 
                 if input_sub_remover is not None:
                     if tbar is not None:

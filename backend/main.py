@@ -77,7 +77,9 @@ class SubtitleRemover:
         self.video_temp_file = tempfile.NamedTemporaryFile(suffix='.mp4', delete=False)
         # 创建视频写对象
         self.video_writer = cv2.VideoWriter(get_readable_path(self.video_temp_file.name), cv2.VideoWriter_fourcc(*'mp4v'), self.fps, self.size)
-        self.video_out_path = os.path.abspath(os.path.join(os.path.dirname(self.video_path), f'{self.vd_name}_no_sub.mp4'))
+        # 只有在非STTN-AUTO模式下才使用默认的video_out_path
+        if config.inpaintMode.value != InpaintMode.STTN_AUTO:
+            self.video_out_path = os.path.abspath(os.path.join(os.path.dirname(self.video_path), f'{self.vd_name}_no_sub.mp4'))
         self.propainter_inpaint = None
         self.ext = os.path.splitext(vd_path)[-1]
         if self.is_picture:
@@ -286,6 +288,13 @@ class SubtitleRemover:
             start_time=self.start_time,
             end_time=self.end_time
         )
+        # 为STTN-AUTO模式设置专门的输出路径
+        if self.start_time > 0 or self.end_time is not None:
+            self.video_out_path = os.path.abspath(os.path.join(os.path.dirname(self.video_path), 
+                f'{self.vd_name}_no_sub_{int(self.start_time)}s_{int(self.end_time)}s.mp4'))
+        else:
+            self.video_out_path = os.path.abspath(os.path.join(os.path.dirname(self.video_path), 
+                f'{self.vd_name}_no_sub.mp4'))
         sttn_video_inpaint(input_mask=mask, input_sub_remover=self, tbar=tbar)
 
     def video_inpaint(self, tbar, model):
@@ -427,8 +436,18 @@ class SubtitleRemover:
         self.video_cap.release()
         self.video_writer.release()
         if not self.is_picture:
-            # 将原音频合并到新生成的视频文件中
-            self.merge_audio_to_video()
+            # 在STTN-AUTO模式下，可能已经生成了独立的输出文件
+            sttn_auto_output = None
+            if config.inpaintMode.value == InpaintMode.STTN_AUTO and (self.start_time > 0 or self.end_time is not None):
+                sttn_auto_output = os.path.abspath(os.path.join(os.path.dirname(self.video_path), 
+                    f'{self.vd_name}_no_sub_{int(self.start_time)}s_{int(self.end_time)}s.mp4'))
+            
+            # 如果STTN-AUTO生成了独立的输出文件，使用它
+            if sttn_auto_output and os.path.exists(sttn_auto_output):
+                self.video_out_path = sttn_auto_output
+            else:
+                # 将原音频合并到新生成的视频文件中
+                self.merge_audio_to_video()
         self.append_output(tr['Main']['FinishedProcessing'].format(self.video_out_path))
         self.append_output(tr['Main']['ProcessingTime'].format(round(time.time() - start_time)))
         self.isFinished = True
