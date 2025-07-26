@@ -338,9 +338,14 @@ class STTNAutoInpaint:
                         print(f"Failed to read frame {j}.")
                         break
                     
-                    # 确保image是numpy数组
+                    # 确保image是numpy数组，并且尺寸正确
                     if not isinstance(image, np.ndarray):
                         image = np.array(image)
+                    
+                    # 确保图像尺寸与视频尺寸一致
+                    if image.shape[0] != frame_info['H_ori'] or image.shape[1] != frame_info['W_ori']:
+                        print(f"Frame {j + start_frame} dimension mismatch. Resizing from {image.shape} to ({frame_info['H_ori']}, {frame_info['W_ori']}, 3)")
+                        image = cv2.resize(image, (frame_info['W_ori'], frame_info['H_ori']))
                     
                     # 检测帧中是否包含文字，如果包含则跳过该帧（仅在启用配置时）
                     contains_text = False
