@@ -42,6 +42,9 @@ class Config(QConfig):
     # 默认值为一个选区，格式为："ymin,ymax,xmin,xmax;ymin,ymax,xmin,xmax;..."，分号分隔不同选区
     subtitleSelectionAreas = ConfigItem("Main", "SubtitleSelectionAreas", "0.88,0.99,0.15,0.85")
 
+    # 是否在STTN-AUTO模式下跳过包含文字的帧
+    skipFramesWithTextInSttnAuto = ConfigItem("Main", "SkipFramesWithTextInSttnAuto", True, BoolValidator())
+
     """
     MODE可选算法类型
     - InpaintMode.STTN_AUTO 智能擦除版

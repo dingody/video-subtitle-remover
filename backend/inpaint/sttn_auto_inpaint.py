@@ -16,6 +16,7 @@ from backend.config import config
 from backend.inpaint.sttn.auto_sttn import InpaintGenerator
 from backend.inpaint.utils.sttn_utils import Stack, ToTorchFormatTensor
 from backend.tools.inpaint_tools import get_inpaint_area_by_mask, is_frame_number_in_ab_sections
+from backend.tools.subtitle_detect import SubtitleDetect
 
 # 定义图像预处理方式
 _to_tensors = transforms.Compose([
@@ -181,7 +182,7 @@ class STTNAutoInpaint:
         # 返回视频读取对象、帧信息和视频写入对象
         return reader, frame_info
 
-    def __init__(self, device, model_path, video_path, mask_path=None, clip_gap=None):
+    def __init__(self, device, model_path, video_path, mask_path=None, clip_gap=None, sub_areas=None):
         # STTNInpaint视频修复实例初始化
         self.sttn_inpaint = STTNInpaint(device, model_path)
         # 视频和掩码路径
@@ -197,6 +198,11 @@ class STTNAutoInpaint:
             self.clip_gap = config.getSttnMaxLoadNum()
         else:
             self.clip_gap = clip_gap
+            
+        # 初始化OCR检测器，用于检测帧中是否包含文字
+        self.subtitle_detector = None
+        if sub_areas is not None:
+            self.subtitle_detector = SubtitleDetect(video_path, sub_areas)
 
     def __call__(self, input_mask=None, input_sub_remover=None, tbar=None):
         reader = None
@@ -249,10 +255,19 @@ class STTNAutoInpaint:
                         print(f"Warning: Failed to read frame {j}.")
                         break
                     
+                    # 检测帧中是否包含文字，如果包含则跳过该帧（仅在启用配置时）
+                    contains_text = False
+                    if (config.skipFramesWithTextInSttnAuto.value and 
+                        self.subtitle_detector is not None and 
+                        is_frame_number_in_ab_sections(j, ab_sections)):
+                        detected_text = self.subtitle_detector.detect_subtitle(image)
+                        contains_text = len(detected_text) > 0
+                    
                     frames_hr.append(image)
                     valid_frames_count += 1
                     
-                    if is_frame_number_in_ab_sections(j, ab_sections):
+                    # 只有不包含文字的帧才进行处理
+                    if is_frame_number_in_ab_sections(j, ab_sections) and not contains_text:
                         for k in range(len(inpaint_area)):
                             # 裁剪、缩放并添加到帧字典
                             image_crop = image[inpaint_area[k][0]:inpaint_area[k][1], :, :]
@@ -280,8 +295,17 @@ class STTNAutoInpaint:
                     # 构建映射关系
                     for j in range(start_f, end_f):
                         if j - start_f < valid_frames_count and is_frame_number_in_ab_sections(j, ab_sections):
-                            processed_frames_map[j - start_f] = processed_idx
-                            processed_idx += 1
+                            # 检查该帧是否包含文字（仅在启用配置时）
+                            contains_text = False
+                            if (config.skipFramesWithTextInSttnAuto.value and 
+                                self.subtitle_detector is not None):
+                                detected_text = self.subtitle_detector.detect_subtitle(frames_hr[j - start_f])
+                                contains_text = len(detected_text) > 0
+                            
+                            # 只有不包含文字的帧才被标记为已处理
+                            if not contains_text:
+                                processed_frames_map[j - start_f] = processed_idx
+                                processed_idx += 1
                     
                     # 应用修复结果
                     for j in range(valid_frames_count):

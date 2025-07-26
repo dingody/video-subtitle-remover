@@ -47,6 +47,16 @@ class SettingInterface(QtWidgets.QVBoxLayout):
         )
         self.addWidget(self.subtitle_detect_model_combo)
 
+        # 是否在STTN-AUTO模式下跳过包含文字的帧
+        self.skip_frames_with_text_switch = SwitchSettingCard(
+            configItem=config.skipFramesWithTextInSttnAuto,
+            icon=FluentIcon.FONT,
+            title=tr["Setting"]["SkipFramesWithTextInSttnAuto"],
+            content=tr["Setting"]["SkipFramesWithTextInSttnAutoDesc"],
+            parent=parent
+        )
+        self.addWidget(self.skip_frames_with_text_switch)
+
         # 是否启用硬件加速
         self.hardware_acceleration = SwitchSettingCard(
             configItem=config.hardwareAcceleration,

@@ -248,7 +248,12 @@ class SubtitleRemover:
             ymin, ymax, xmin, xmax = sub_area
             mask_area_coordinates.append((xmin, xmax, ymin, ymax))
         mask = create_mask(self.mask_size, mask_area_coordinates)
-        sttn_video_inpaint = STTNAutoInpaint(self.hardware_accelerator.device, self.model_config.STTN_AUTO_MODEL_PATH, self.video_path)
+        sttn_video_inpaint = STTNAutoInpaint(
+            self.hardware_accelerator.device, 
+            self.model_config.STTN_AUTO_MODEL_PATH, 
+            self.video_path,
+            sub_areas=self.sub_areas
+        )
         sttn_video_inpaint(input_mask=mask, input_sub_remover=self, tbar=tbar)
 
     def video_inpaint(self, tbar, model):
