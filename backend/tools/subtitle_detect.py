@@ -46,8 +46,10 @@ class SubtitleDetect:
         # 确保img是numpy数组
         if not isinstance(img, np.ndarray):
             img = np.array(img)
+        print(f"Detecting subtitles in frame with shape {img.shape}")
         temp_list = []
         dt_boxes, elapse = self.text_detector(img)
+        print(f"OCR detection completed in {elapse} seconds")
         coordinate_list = get_coordinates(dt_boxes.tolist())
         if coordinate_list:
             for coordinate in coordinate_list:
@@ -61,6 +63,7 @@ class SubtitleDetect:
                             temp_list.append((xmin, xmax, ymin, ymax))
                 else:
                     temp_list.append((xmin, xmax, ymin, ymax))
+        print(f"Found {len(temp_list)} text regions")
         return temp_list
 
     def find_subtitle_frame_no(self, sub_remover=None):

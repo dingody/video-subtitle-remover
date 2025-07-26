@@ -331,6 +331,7 @@ class STTNAutoInpaint:
                 valid_frames_count = 0
                 processed_frames_count = 0  # 记录实际处理的帧数
                 skipped_frames_count = 0    # 记录跳过的帧数
+                print(f"Reading {end_f - start_f} frames from video")
                 for j in range(start_f, end_f):
                     success, image = reader.read()
                     if not success:
@@ -346,15 +347,21 @@ class STTNAutoInpaint:
                     if (config.skipFramesWithTextInSttnAuto.value and 
                         self.subtitle_detector is not None and 
                         is_frame_number_in_ab_sections(j + start_frame, ab_sections)):
+                        print(f"Detecting text in frame {j + start_frame}")
                         detected_text = self.subtitle_detector.detect_subtitle(image)
                         contains_text = len(detected_text) > 0
                         if contains_text:
                             skipped_frames_count += 1
+                            print(f"Frame {j + start_frame} contains text, skipping...")
                         else:
                             processed_frames_count += 1
+                            print(f"Frame {j + start_frame} is clean, will be processed")
                     elif is_frame_number_in_ab_sections(j + start_frame, ab_sections):
                         # 即使不检测文字也记录处理的帧
                         processed_frames_count += 1
+                        print(f"Frame {j + start_frame} will be processed (text detection disabled)")
+                    else:
+                        print(f"Frame {j + start_frame} is outside processing area, skipping...")
                     
                     frames_hr.append(image)
                     valid_frames_count += 1
@@ -369,6 +376,8 @@ class STTNAutoInpaint:
                             image_resize = cv2.resize(image_crop, (self.sttn_inpaint.model_input_width, self.sttn_inpaint.model_input_height))
                             frames[k].append(image_resize)
                 
+                print(f"Finished reading frames. Valid: {valid_frames_count}, Processed: {processed_frames_count}, Skipped: {skipped_frames_count}")
+                
                 # 如果没有读取到有效帧，则跳过当前迭代
                 if valid_frames_count == 0:
                     print(f"Skipped segment {start_f+1}-{end_f}")
@@ -380,6 +389,7 @@ class STTNAutoInpaint:
                     if len(frames[k]) > 0:  # 确保有帧可以处理
                         print(f"Processing area {k} with {len(frames[k])} frames")
                         comps[k] = self.sttn_inpaint.inpaint(frames[k])
+                        print(f"Completed processing area {k}")
                     else:
                         comps[k] = []
                         print(f"Skipping area {k} - no frames to process")
@@ -391,6 +401,7 @@ class STTNAutoInpaint:
                     processed_idx = 0
                     
                     # 构建映射关系
+                    print(f"Building frame mapping for {valid_frames_count} frames")
                     for j in range(start_f, end_f):
                         if j - start_f < valid_frames_count and is_frame_number_in_ab_sections(j + start_frame, ab_sections):
                             # 检查该帧是否包含文字（仅在启用配置时）
@@ -404,6 +415,8 @@ class STTNAutoInpaint:
                             if not contains_text:
                                 processed_frames_map[j - start_f] = processed_idx
                                 processed_idx += 1
+                    
+                    print(f"Processed frames map: {processed_frames_map}")
                     
                     # 应用修复结果
                     print(f"Applying results to {valid_frames_count} frames")
